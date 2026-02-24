@@ -54,21 +54,18 @@ def get_available_models(required_models: List[str] = None) -> Dict[str, bool]:
         required_models = SLM_MODELS
 
     installed = list_installed_models()
-    # Normalizar nombres (Ollama puede agregar :latest)
-    installed_base = set()
+    # Normalizar: Ollama puede agregar :latest
+    installed_normalized = set()
     for name in installed:
-        installed_base.add(name)
-        if ":" in name:
-            installed_base.add(name.split(":")[0])
+        installed_normalized.add(name)
+        # "qwen2.5:3b" -> tambien aceptar sin tag si es :latest
+        if name.endswith(":latest"):
+            installed_normalized.add(name.replace(":latest", ""))
 
     result = {}
     for model in required_models:
-        is_available = (
-            model in installed_base
-            or model.split(":")[0] in installed_base
-            or any(model in inst or inst.startswith(model.split(":")[0])
-                   for inst in installed)
-        )
+        # Coincidencia exacta del nombre completo
+        is_available = model in installed_normalized
         result[model] = is_available
 
     return result
