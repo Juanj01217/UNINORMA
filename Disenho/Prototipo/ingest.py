@@ -1,16 +1,19 @@
 """
-Pipeline de ingesta: PDF -> texto -> chunks -> embeddings -> ChromaDB.
+Pipeline de ingesta: Scraping completo -> texto -> chunks -> embeddings -> ChromaDB.
+
+Maneja 3 tipos de contenido de la pagina de normatividad Uninorte:
+  1. PDFs directos
+  2. Sub-paginas con PDFs (los sigue y descarga)
+  3. Paginas web sin PDF (extrae texto HTML)
 
 Uso:
-    python ingest.py
-    python ingest.py --pdf-dir ruta/a/pdfs
-    python ingest.py --embedding-model mpnet-multilingual
-    python ingest.py --download   (descarga PDFs automaticamente)
+    python ingest.py              (usa cache local o descarga)
+    python ingest.py --download   (fuerza re-descarga completa)
+    python ingest.py --pdf-dir ruta/a/pdfs  (solo PDFs locales)
 """
 import argparse
 import shutil
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -19,75 +22,7 @@ from src.pdf_extractor import extract_all_pdfs, save_processed_text
 from src.text_chunker import chunk_all_documents
 from src.embeddings import get_embedding_model
 from src.vector_store import create_vector_store
-
-
-UNINORTE_NORMATIVIDAD_URL = "https://www.uninorte.edu.co/web/sobre-nosotros/normatividad"
-
-
-def download_pdfs(dest_dir: Path) -> int:
-    """Descarga PDFs de normatividad directamente desde la web de Uninorte."""
-    import requests
-    from bs4 import BeautifulSoup
-    from requests.adapters import HTTPAdapter
-    from urllib3.util.retry import Retry
-
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"  Descargando desde: {UNINORTE_NORMATIVIDAD_URL}")
-
-    # Configurar sesion con reintentos
-    session = requests.Session()
-    retry = Retry(connect=3, backoff_factor=0.5)
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-
-    # Obtener la pagina
-    page = session.get(UNINORTE_NORMATIVIDAD_URL, headers=headers, timeout=15)
-    page.raise_for_status()
-    soup = BeautifulSoup(page.text, "html.parser")
-
-    # Buscar el div con los enlaces a PDFs
-    div_reglamentos = soup.find("div", class_="c_cr")
-    if not div_reglamentos:
-        raise RuntimeError(
-            "No se encontro el div con clase 'c_cr' en la pagina. "
-            "La estructura de la web puede haber cambiado."
-        )
-
-    base_url = UNINORTE_NORMATIVIDAD_URL.split("/web")[0]
-    count = 0
-
-    for link in div_reglamentos.find_all("a", href=True):
-        href = link["href"]
-        if not href.endswith(".pdf"):
-            continue
-
-        if not href.startswith("http"):
-            href = base_url + href
-
-        try:
-            pdf_response = session.get(href, headers=headers, timeout=15)
-            pdf_response.raise_for_status()
-
-            filename = href.split("/")[-1]
-            filepath = dest_dir / filename
-
-            with open(filepath, "wb") as f:
-                f.write(pdf_response.content)
-
-            print(f"    Descargado: {filename}")
-            count += 1
-            time.sleep(1)
-
-        except Exception as e:
-            print(f"    Error descargando {href}: {e}")
-
-    return count
+from src.web_scraper import scrape_normatividad
 
 
 def copy_pdfs_to_data(source_dir: Path, dest_dir: Path) -> int:
@@ -100,8 +35,7 @@ def copy_pdfs_to_data(source_dir: Path, dest_dir: Path) -> int:
             f"No se encontraron PDFs en {source_dir}.\n"
             f"Opciones:\n"
             f"  1. Ejecuta: python ingest.py --download\n"
-            f"  2. Ejecuta el notebook WebScraping/dataCollection.ipynb\n"
-            f"  3. Coloca PDFs manualmente en: {dest_dir}"
+            f"  2. Coloca PDFs manualmente en: {dest_dir}"
         )
 
     for pdf in pdf_files:
@@ -115,22 +49,37 @@ def copy_pdfs_to_data(source_dir: Path, dest_dir: Path) -> int:
     return len(pdf_files)
 
 
-def obtain_pdfs(dest_dir: Path, force_download: bool = False) -> int:
-    """Obtiene los PDFs: busca en varias ubicaciones o descarga."""
-    # Si ya hay PDFs en data/raw, usarlos
-    existing = list(dest_dir.glob("*.pdf"))
-    if existing and not force_download:
-        print(f"  {len(existing)} PDFs ya presentes en data/raw")
-        return len(existing)
+def obtain_content(dest_dir: Path, force_download: bool = False):
+    """
+    Obtiene todo el contenido de normatividad.
 
-    # Intentar copiar desde WebScraping/reglamentos
-    if SCRAPING_PDF_DIR.exists() and list(SCRAPING_PDF_DIR.glob("*.pdf")):
-        print(f"  Copiando desde {SCRAPING_PDF_DIR}")
-        return copy_pdfs_to_data(SCRAPING_PDF_DIR, dest_dir)
+    Returns:
+        web_documents: Lista de documentos extraidos de paginas web (o lista vacia)
+    """
+    # Siempre hacer scraping completo para capturar PDFs + contenido web
+    # Los PDFs existentes no se re-descargan si ya estan en disco
+    print("  Ejecutando scraping completo de normatividad Uninorte...")
+    print()
 
-    # Descargar directamente de la web
-    print("  No se encontraron PDFs locales. Descargando desde Uninorte...")
-    return download_pdfs(dest_dir)
+    # Limpiar PDFs duplicados antes de scraping si se fuerza descarga
+    if force_download:
+        existing_pdfs = list(dest_dir.glob("*.pdf"))
+        if existing_pdfs:
+            print(f"  Limpiando {len(existing_pdfs)} PDFs existentes para descarga limpia...")
+            for pdf in existing_pdfs:
+                pdf.unlink()
+
+    results = scrape_normatividad(pdf_dest_dir=dest_dir)
+
+    print(f"\n  Resumen scraping:")
+    print(f"    PDFs descargados: {results['pdfs_downloaded']}")
+    print(f"    Documentos web extraidos: {len(results['web_documents'])}")
+    if results["errors"]:
+        print(f"    Errores: {len(results['errors'])}")
+        for err in results["errors"]:
+            print(f"      - {err}")
+
+    return results["web_documents"]
 
 
 def run_ingestion(
@@ -140,32 +89,48 @@ def run_ingestion(
 ) -> None:
     """Ejecuta el pipeline completo de ingesta."""
 
-    # Paso 1: Obtener PDFs
+    web_documents = []
+
+    # Paso 1: Obtener contenido
     if pdf_dir is None:
         pdf_dir = RAW_PDF_DIR
         print("=" * 60)
-        print("PASO 1: Obteniendo PDFs de normatividad")
+        print("PASO 1: Obteniendo contenido de normatividad")
         print("=" * 60)
-        count = obtain_pdfs(RAW_PDF_DIR, force_download)
-        print(f"-> {count} PDFs disponibles\n")
+        web_documents = obtain_content(RAW_PDF_DIR, force_download)
+        pdf_count = len(list(pdf_dir.glob("*.pdf")))
+        print(f"-> {pdf_count} PDFs + {len(web_documents)} paginas web\n")
     else:
         print("=" * 60)
         print(f"PASO 1: Usando PDFs de {pdf_dir}")
         print("=" * 60 + "\n")
 
-    # Verificar que hay PDFs
-    pdf_files = list(pdf_dir.glob("*.pdf"))
-    if not pdf_files:
-        print("ERROR: No hay PDFs disponibles para procesar.")
-        print("Ejecuta: python ingest.py --download")
-        sys.exit(1)
-
-    # Paso 2: Extraer texto
+    # Paso 2: Extraer texto de PDFs
     print("=" * 60)
     print("PASO 2: Extrayendo texto de PDFs")
     print("=" * 60)
-    documents = extract_all_pdfs(pdf_dir)
-    print(f"-> {len(documents)} documentos procesados\n")
+    pdf_files = list(pdf_dir.glob("*.pdf"))
+    if pdf_files:
+        documents = extract_all_pdfs(pdf_dir)
+        print(f"-> {len(documents)} PDFs procesados\n")
+    else:
+        documents = []
+        print("-> No hay PDFs para procesar\n")
+
+    # Paso 2b: Agregar documentos web
+    if web_documents:
+        print("=" * 60)
+        print("PASO 2b: Procesando paginas web extraidas")
+        print("=" * 60)
+        for doc in web_documents:
+            print(f"  {doc['title']}: {len(doc['full_text'])} chars, {doc['num_pages']} secciones")
+        documents.extend(web_documents)
+        print(f"-> {len(web_documents)} paginas web agregadas\n")
+
+    if not documents:
+        print("ERROR: No hay documentos disponibles para procesar.")
+        print("Ejecuta: python ingest.py --download")
+        sys.exit(1)
 
     # Paso 3: Guardar texto procesado
     print("=" * 60)
@@ -192,10 +157,14 @@ def run_ingestion(
     vector_store = create_vector_store(chunks, embedding_model)
 
     # Resumen
+    pdf_count = len([d for d in documents if d.get("source_type") != "web"])
+    web_count = len([d for d in documents if d.get("source_type") == "web"])
     print("\n" + "=" * 60)
     print("INGESTA COMPLETADA")
     print("=" * 60)
-    print(f"  Documentos procesados: {len(documents)}")
+    print(f"  PDFs procesados: {pdf_count}")
+    print(f"  Paginas web procesadas: {web_count}")
+    print(f"  Total documentos: {len(documents)}")
     print(f"  Chunks creados: {len(chunks)}")
     print(f"  Modelo de embedding: {embedding_model_key}")
     print(f"  Vector store listo para consultas")
@@ -204,7 +173,7 @@ def run_ingestion(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Pipeline de ingesta: PDF -> ChromaDB"
+        description="Pipeline de ingesta: Normatividad Uninorte -> ChromaDB"
     )
     parser.add_argument(
         "--pdf-dir",
@@ -222,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--download",
         action="store_true",
-        help="Forzar descarga de PDFs desde la web de Uninorte",
+        help="Forzar re-descarga completa desde la web de Uninorte",
     )
     args = parser.parse_args()
 

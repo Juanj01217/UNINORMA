@@ -36,8 +36,8 @@ SLM_MODELS = [
 DEFAULT_SLM_MODEL = "qwen2.5:3b"
 
 # === Parametros de Recuperacion ===
-RETRIEVAL_TOP_K = 4
+RETRIEVAL_TOP_K = 6
 
 # === Parametros de Generacion ===
 TEMPERATURE = 0.1
-MAX_TOKENS = 1024
+MAX_TOKENS = 2048
