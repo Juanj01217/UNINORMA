@@ -199,7 +199,7 @@ export default function HomePage() {
             disabled={sending}
             placeholder="Escribe tu pregunta sobre la normatividad de Uninorte..."
             rows={1}
-            className="flex-1 resize-none border border-gray-300 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 max-h-32 overflow-y-auto"
+            className="flex-1 resize-none border border-gray-300 rounded-2xl px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 max-h-32 overflow-y-auto"
             style={{ minHeight: "48px" }}
           />
           <button

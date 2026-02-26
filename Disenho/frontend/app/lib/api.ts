@@ -45,8 +45,15 @@ export async function loadModel(model: string): Promise<void> {
     body: JSON.stringify({ model }),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Error al cargar el modelo");
+    let message = "Error al cargar el modelo";
+    try {
+      const err = await res.json();
+      message = err.detail || message;
+    } catch {
+      const text = await res.text();
+      if (text) message = text;
+    }
+    throw new Error(message);
   }
 }
 
@@ -60,8 +67,15 @@ export async function sendQuery(
     body: JSON.stringify({ question, model }),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.detail || "Error al procesar la consulta");
+    let message = "Error al procesar la consulta";
+    try {
+      const err = await res.json();
+      message = err.detail || message;
+    } catch {
+      const text = await res.text();
+      if (text) message = text;
+    }
+    throw new Error(message);
   }
   return res.json();
 }
