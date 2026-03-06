@@ -1,26 +1,30 @@
 # ProyectoFinal-SLM-UNINORMA
 
-# Asistente Virtual Basado en Small Language Model (SLM) para la Consulta de Normatividad de Uninorte
+# Informe 1: Asistente Virtual Basado en Small Language Model (SLM) para la Consulta de Normatividad de Uninorte 
 
 ---
 
 ## 1. Introducción
 
-El acceso eficiente a la normatividad institucional es un reto recurrente en entornos universitarios. Actualmente, la Universidad del Norte publica su marco normativo exclusivamente en formato digital (principalmente PDFs) en su [portal oficial de normatividad](https://www.uninorte.edu.co/web/sobre-nosotros/normatividad), abarcando reglamentos estudiantiles, estatutos y lineamientos académicos y administrativos. Esta dispersión y extensión de información complejizan la consulta ágil y precisa, generando retrasos y sobrecarga en las áreas administrativas.
+El acceso eficiente a la información institucional es un pilar fundamental en las instituciones de educación superior. Tradicionalmente, la normatividad de las universidades se encuentra distribuida en documentos extensos (estatutos, reglamentos, resoluciones), lo que dificulta su consulta ágil por parte de la comunidad académica. Con el advenimiento del Procesamiento de Lenguaje Natural (NLP) y los Modelos de Lenguaje Grande (LLMs), ha surgido un nuevo paradigma de interacción humano-computadora basado en interfaces conversacionales. 
 
-En este contexto, se propone el diseño y desarrollo de un asistente virtual, basado en un Small Language Model (SLM) local y una arquitectura de Retrieval-Augmented Generation (RAG), que permita consultar la normatividad institucional en lenguaje natural de forma segura, privada y eficiente.
+Sin embargo, el uso de LLMs comerciales a través de APIs de terceros plantea desafíos significativos en términos de privacidad de los datos, dependencia de infraestructura externa y costos recurrentes de inferencia. Para mitigar estas problemáticas, este proyecto propone el diseño e implementación de un asistente virtual inteligente basado en la arquitectura Retrieval-Augmented Generation (RAG) (Lewis et al., 2020), combinada con Small Language Models (SLMs). La solución se ejecuta de manera 100% local, empleando técnicas de cuantización para viabilizar el despliegue de modelos de miles de millones de parámetros en hardware de consumo, garantizando soberanía tecnológica, gratuidad y alta precisión semántica en el contexto específico de la Universidad del Norte. 
 
 ---
 
 ## 2. Planteamiento del Problema
 
-La comunidad universitaria enfrenta dificultades para encontrar respuestas rápidas y exactas sobre normatividad institucional debido a:
-- La gran cantidad de documentos independientes, de considerable extensión, en formatos no estructurados (PDF).
-- La falta de un motor de búsqueda semántica que relacione una consulta en lenguaje natural con el fragmento normativo relevante.
-- El tiempo perdido por estudiantes y personal al buscar manualmente entre los documentos, lo que a su vez incrementa las consultas repetitivas a las secretarías académicas.
+La Universidad del Norte cuenta con un vasto corpus normativo compuesto por reglamentos estudiantiles, políticas académicas y resoluciones administrativas. Actualmente, los estudiantes y funcionarios que requieren resolver dudas específicas deben recurrir a búsquedas basadas en coincidencias léxicas (palabras clave) dentro de plataformas estáticas, o realizar una lectura exhaustiva de documentos PDF (a menudo de decenas de páginas). 
 
-**Problema principal:**  
-*La carencia de un sistema automatizado que permita resolver consultas sobre la normatividad universitaria, basada exclusivamente en los documentos oficiales disponibles, impacta negativamente la autogestión y genera sobrecarga administrativa*.
+Este enfoque tradicional de recuperación de información presenta las siguientes deficiencias:
+
+- **Falta de comprensión semántica**: Los motores de búsqueda léxicos no logran capturar la intención del usuario ni el contexto de la consulta, fallando frente a la sinonimia o la polisemia. 
+
+- **Sobrecarga cognitiva**: El usuario debe localizar, leer y extraer la respuesta por sí mismo a partir de los documentos recuperados. 
+
+- **Desactualización y fragmentación**: La información se encuentra dispersa en múltiples formatos (web y PDF). 
+
+Se requiere un sistema capaz de comprender el lenguaje natural, recuperar los pasajes exactos dentro del corpus normativo cerrado y sintetizar una respuesta coherente sin incurrir en "alucinaciones" informativas, las cuales representan un riesgo crítico en contextos legales e institucionales. 
 
 ---
 
@@ -28,24 +32,18 @@ La comunidad universitaria enfrenta dificultades para encontrar respuestas rápi
 
 ### 3.1. Restricciones
 
-- **Restricción de alcance:**  
-  El asistente solo consultará documentos de la URL oficial de normatividad de Uninorte (`https://www.uninorte.edu.co/web/sobre-nosotros/normatividad`).  
-- **Recursos computacionales:**  
-  El sistema debe ejecutarse en servidores locales con hardware limitado (sin depender de APIs externas como OpenAI/Google).
-- **Privacidad y seguridad:**  
-  No se permitirá la integración con servicios en la nube externos para procesamiento del lenguaje o almacenamiento.
-- **Fuentes de datos:**  
-  Solamente se utilizarán los documentos PDF vigentes descargados de la URL definida.
-- **Alucinaciones:**  
-  El sistema debe limitar sus respuestas al contenido recuperado. Si la respuesta no está en la normatividad, debe indicarlo explícitamente.
-- (COMPLETAR si existe otra restricción específica derivada de requerimientos del tutor o de recursos disponibles).
+- **Ejecución 100% local**: La arquitectura no debe depender de servicios en la nube (ej. OpenAI, Anthropic), garantizando la privacidad de los datos y eliminando costos operativos (API calls). 
+
+- **Limitaciones de hardware (Inferencia)**: El modelo generativo debe ser un Small Language Model (SLM) capaz de ejecutarse en memoria RAM/VRAM de hardware de grado consumidor. Por tanto, se restringe el uso al modelo Qwen 2.5:3b (3.1 billones de parámetros) aplicando cuantización Q4_K_M a través del motor Ollama. 
+
+- **Veracidad estricta**: El sistema no debe generar conocimiento propio; toda respuesta debe estar fundamentada exclusivamente en los documentos recuperados mediante RAG. 
+
 
 ### 3.2. Supuestos
 
-- Los documentos descargados son oficiales, actualizados y públicos.
-- Las consultas estarán en español y el modelo SLM seleccionado será ajustado para ese idioma.
-- Es posible la extracción programática completa de texto legible de todos los PDFs.
-- (COMPLETAR otros supuestos relevantes detectados por el equipo).
+- El corpus documental de 25 fuentes (20 PDFs y 5 páginas web) procesado en 907 chunks constituye una muestra representativa y suficiente para validar el prototipo funcional. 
+
+- Los usuarios interactuarán con el sistema utilizando el idioma español. 
 
 ---
 
@@ -53,18 +51,25 @@ La comunidad universitaria enfrenta dificultades para encontrar respuestas rápi
 
 ### 4.1. Incluye
 
-- Extracción automatizada y actualización de los documentos PDF de la página oficial de normatividad.
-- Procesamiento semántico mediante técnicas de RAG empleando un SLM open source (ej. Llama 3, Phi-3).
-- Motor de búsqueda interno que relacione una consulta con la sección normativa pertinente, citando el documento fuente.
-- Interfaz de usuario simple de tipo chat (web), accesible desde un navegador de la red interna.
-- Reporte y documentación del diseño, la arquitectura y los resultados de pruebas.
+- El proyecto abarca el ciclo de vida completo de la solución de software, incluyendo: 
+
+- Construcción de un pipeline de ingesta automatizado mediante web scraping (BeautifulSoup4) y extracción de texto desde PDFs. 
+
+- Estrategia de chunking semántico (RecursiveCharacterTextSplitter) y vectorización mediante el modelo de embeddings paraphrase-multilingual-MiniLM-L12-v2. 
+
+- Implementación de una base de datos vectorial local (ChromaDB) para la recuperación de información. 
+
+- Orquestación del flujo RAG mediante LangChain (LCEL) y FastAPI. 
+
+- Despliegue del modelo generativo local (Qwen 2.5:3b) mediante Ollama. 
+
+- Desarrollo de una interfaz de usuario web moderna e interactiva utilizando Next.js 16 (App Router), React y Tailwind CSS. 
 
 ### 4.2. No incluye
 
-- Integración con sistemas de autenticación de Uninorte.
-- Gestión o validación jurídica de respuestas.
-- Procesamiento de trámites administrativos (solo consultas informativas).
-- Despliegue a escala institucional ni soporte a consultas fuera del marco de la normatividad oficial.
+- No se contempla la integración del asistente en los sistemas core de producción de la universidad en esta fase de pregrado. 
+
+- El sistema no proporcionará asesoría legal vinculante; sus respuestas son de carácter informativo. 
 
 ---
 
@@ -72,47 +77,91 @@ La comunidad universitaria enfrenta dificultades para encontrar respuestas rápi
 
 ### 5.1. Objetivo general
 
-Diseñar y desarrollar un prototipo de asistente virtual, basado en un Small Language Model (SLM) y arquitectura RAG, para facilitar la consulta automática y precisa de la normatividad institucional de Uninorte a través de lenguaje natural.
+Diseñar e implementar un asistente virtual basado en la arquitectura de Generación Aumentada por Recuperación (RAG) y Modelos de Lenguaje Reducidos (SLM) de ejecución local, para facilitar la consulta en lenguaje natural de la normatividad institucional de la Universidad del Norte. 
 
 ### 5.2. Objetivos específicos
 
-- Investigar y seleccionar las tecnologías apropiadas de extracción de texto y vectorización para documentos PDF normativos.
-- Configurar y adaptar un SLM open source capaz de ejecutarse localmente, compatible con español.
-- Implementar un motor de búsqueda semántica y pipeline de RAG para consultas normativas.
-- Desarrollar una interfaz de usuario básica para la interacción y visualización de resultados.
-- Evaluar la precisión y utilidad del sistema usando conjuntos de consultas de prueba y criterios de aceptación previamente definidos.
+- Desarrollar un pipeline de procesamiento e ingesta de datos no estructurados (PDFs y HTML) que permita la segmentación (chunking) y representación vectorial del corpus normativo de la institución. 
+
+- Implementar un motor de búsqueda semántica utilizando ChromaDB y modelos de embeddings multilingües, optimizado para el contexto normativo colombiano. 
+
+- Integrar y configurar un SLM de 3.1 billones de parámetros (Qwen 2.5:3b) ejecutado localmente, afinando el prompt engineering para mitigar las alucinaciones en un entorno RAG cerrado. 
+
+- Construir una API RESTful escalable y una interfaz de usuario moderna orientada a la usabilidad, que permita la interacción fluida entre el usuario final y el motor RAG. 
 
 ---
 
-## 6. Criterios de aceptación iniciales
+## 6. Estado del arte y marco teórico
 
-- El sistema debe responder correctamente al menos el X% (COMPLETAR: definir métrica inicial, ej. 80%) de un set de consultas predefinidas validadas por usuarios internos.
-- Cada respuesta debe incluir la referencia (documento, artículo, sección) que respalda la información suministrada.
-- El sistema debe operar completamente offline dentro de la infraestructura local y no enviar datos sensibles fuera de la universidad.
-- Debe manejar correctamente la situación “no respuesta” cuando la normativa no contemple la pregunta.
-- (COMPLETAR: definir otros criterios prácticos sugeridos por el tutor/equipo).
+El enfoque dominante para la mitigación de alucinaciones en LLMs orientados a dominios específicos es el marco Retrieval-Augmented Generation (RAG), introducido formalmente por Lewis et al. (2020) [VERIFICAR FUENTE: NeurIPS 2020]. RAG desacopla el conocimiento paramétrico (almacenado en los pesos del modelo) del conocimiento no paramétrico (una base de datos externa), permitiendo la actualización de la información sin necesidad de reentrenar (o aplicar fine-tuning) al modelo base. 
 
----
+Para la recuperación semántica, los modelos de transformadores basados en la arquitectura BERT han demostrado ser superiores a los métodos léxicos tradicionales (como BM25). Específicamente, el uso de Sentence-BERT (Reimers & Gurevych, 2019) permite derivar incrustaciones (embeddings) densas computacionalmente eficientes que capturan el significado de las oraciones. El modelo paraphrase-multilingual-MiniLM-L12-v2 se posiciona como una solución óptima para procesar la polisemia legal en español manteniendo una latencia baja en la vectorización. 
 
-## 7. Estado del arte y soluciones relacionadas
+En los últimos dos años, la literatura académica ha explorado la democratización de la IA generativa mediante Small Language Models (SLMs). Investigaciones recientes sugieren que modelos en el rango de 1B a 7B de parámetros, cuando se especializan mediante RAG, pueden igualar el rendimiento de modelos masivos (>70B) en tareas de razonamiento deductivo cerrado, reduciendo exponencialmente la huella computacional. La cuantización (ej. reducción de precisión de coma flotante de 16 bits a enteros de 4 bits - Q4_K_M) es la técnica fundamental que permite que estos modelos se desplieguen eficientemente en memoria unificada de bajo costo sin una pérdida significativa de perplejidad.
 
-Soluciones similares han sido implementadas en el ámbito educativo, aunque generalmente empleando modelos en la nube. Destacan:
-- **Chatbots FAQ institucionales** con RAG sobre bases documentales cerradas [1].
-- **Asistentes para consulta de normativa académica** en instituciones como la Universidad Nacional de Colombia y la Universidad de los Andes [2]–[3].
+## 7. Propuesta de solución (Alto nivel)
 
-El uso de SLMs locales representa una ventaja en privacidad y eficiencia de costos frente a LLMs de uso general ([1], [4]).
+El sistema se estructura en una arquitectura modular dividida en dos fases principales: 
 
----
+- **Pipeline de Ingesta y Vectorización (Offline)**: 
 
-## 8. Plan de trabajo (tentativo)
+  a. Los 25 documentos fuente pasan por un proceso de limpieza y extracción. 
 
-- **Semana 6–7:** Levantamiento y análisis detallado de requisitos; definición técnica de las herramientas y métodos de extracción.
-- **Semana 8:** Pruebas de extracción y vectorización; descarga y procesamiento inicial de documentos.
-- **Semana 9–10:** Desarrollo del motor de búsqueda y conexión al SLM.
-- **Semana 11:** Implementación de la interfaz web de usuario.
-- **Semana 12:** Integración, pruebas internas y validación inicial del pipeline.
-- **Semana 13–14:** Ajustes, recolección de datos de pruebas, mejora de criterios de aceptación.
-- **Semana 15–16:** Elaboración y revisión del informe final; preparación para sustentación.
+  b. RecursiveCharacterTextSplitter divide el texto en 907 chunks manteniendo la coherencia de los párrafos. 
+
+  c. El modelo sentence-transformers convierte cada chunk en un vector denso. 
+
+  d. Los vectores y su metadata (fuente, página, enlace) se indexan en ChromaDB. 
+
+- **Pipeline de Inferencia RAG (Online)**: 
+
+  a. **Frontend (Next.js 16)**: Captura la consulta del usuario en lenguaje natural. 
+
+  b. **Backend (FastAPI + LangChain)**: Recibe la consulta, genera su embedding y realiza una búsqueda de similitud del coseno en ChromaDB para obtener los fragmentos normativos más relevantes (Top-K). 
+
+  c. **Generación (Ollama + Qwen 2.5:3b)**: Un prompt de sistema estricto (system prompt) combina la consulta del usuario con el contexto recuperado. El SLM procesa esta matriz y sintetiza una respuesta precisa, citando invariablemente las fuentes provistas en el contexto. 
+
+## 8. Requerimientos preliminares
+
+- **RF01**: El sistema debe procesar consultas escritas en lenguaje natural en español. 
+
+- **RF02**: El sistema debe devolver una respuesta textual basada única y exclusivamente en el marco normativo pre-cargado. 
+
+- **RF03**: El sistema debe exponer junto a su respuesta las fuentes de donde extrajo la información (nombre del documento, enlace o página). 
+
+ **RNF01**: Toda la arquitectura (vector store, LLM, API, UI) debe ejecutarse localmente sin conexión a internet externa para inferencia. 
+
+- **RNF02**: El modelo de embeddings debe ser capaz de procesar contexto multilingüe con énfasis en idioma español.
+
+## 9. Criterios de aceptación iniciales
+
+- **Precisión de recuperación**: El sistema logra traer el fragmento normativo correcto en el Top-3 de resultados de ChromaDB para al menos el 85% de un set de preguntas de validación. 
+
+- **Mitigación de alucinación**: El asistente responde "No poseo información en los documentos institucionales proporcionados para responder su consulta" cuando se le pregunta sobre temas externos a la universidad. 
+
+- **Rendimiento**: El tiempo total de respuesta (desde el envío de la consulta hasta el inicio del streaming de tokens de salida) no supera los 5-8 segundos en el entorno de desarrollo local. 
+
+## 10. Plan de trabajo
+
+- **Fase 1**: Recolección de normatividad, diseño del pipeline de extracción y chunking (BeautifulSoup, PyPDF2). 
+
+- **Fase 2**: Implementación del Vector Store (ChromaDB) y evaluación empírica de modelos de embeddings locales. 
+
+- **Fase 3**: Despliegue de Ollama, integración del SLM Qwen 2.5:3b y diseño de la cadena RAG con LangChain (FastAPI). 
+
+- **Fase 4**: Desarrollo del Frontend en React/Next.js e integración mediante API REST. 
+
+- **Fase 5**: Pruebas de estrés, validación de fidelidad semántica (ground truth testing) y consolidación del informe final de proyecto. 
+
+## 11. Referencias
+
+- Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N., ... & Kiela, D. (2020). Retrieval-augmented generation for knowledge-intensive nlp tasks. Advances in Neural Information Processing Systems, 33, 9459-9474. 
+
+- Reimers, N., & Gurevych, I. (2019). Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP), 3982-3992. [VERIFICAR FUENTE: Enlace a ACL Anthology]. 
+
+- LangChain AI. (2024). LangChain Documentation: Chains, Retrieval, and Agents. Recuperado de la documentación oficial. 
+
+- Qwen Team. (2024). Qwen2.5 Technical Report.  
 
 *(COMPLETAR: responsable asignado por tarea, hito interno, retroalimentación esperada).*
 
