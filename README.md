@@ -104,16 +104,79 @@ El uso de SLMs locales representa una ventaja en privacidad y eficiencia de cost
 
 ---
 
-## 8. Plan de trabajo (tentativo)
+## 8. Cronograma de Trabajo
 
-- **Semana 6–7:** Levantamiento y análisis detallado de requisitos; definición técnica de las herramientas y métodos de extracción.
-- **Semana 8:** Pruebas de extracción y vectorización; descarga y procesamiento inicial de documentos.
-- **Semana 9–10:** Desarrollo del motor de búsqueda y conexión al SLM.
-- **Semana 11:** Implementación de la interfaz web de usuario.
-- **Semana 12:** Integración, pruebas internas y validación inicial del pipeline.
-- **Semana 13–14:** Ajustes, recolección de datos de pruebas, mejora de criterios de aceptación.
-- **Semana 15–16:** Elaboración y revisión del informe final; preparación para sustentación.
+**Equipo:** Carlos Mendoza, Jesús De la Cruz, Juan José Aragón
+**Periodo:** Semestre 2026-1 (Ene 26 – May 15, 16 semanas) | Sustentación: May–Jun 2026
 
-*(COMPLETAR: responsable asignado por tarea, hito interno, retroalimentación esperada).*
+```mermaid
+gantt
+    title Cronograma del Proyecto - Asistente RAG + SLM Uninorte
+    dateFormat  YYYY-MM-DD
+    axisFormat  %b %d
+
+    section Fase 1: Investigación y Diseño
+    Propuesta y ficha de proyecto           :done, f1a, 2026-01-26, 2026-02-06
+    Análisis de requisitos                  :done, f1b, 2026-02-02, 2026-02-13
+    Selección de stack tecnológico          :done, f1c, 2026-02-09, 2026-02-20
+
+    section Fase 2: Prototipado Backend
+    Web scraping y adquisición de datos     :done, f2a, 2026-02-23, 2026-03-02
+    Pipeline de ingesta (PDF→ChromaDB)      :done, f2b, 2026-02-23, 2026-03-07
+    Configuración Ollama + prompts          :done, f2c, 2026-03-03, 2026-03-10
+    API REST (FastAPI)                      :done, f2d, 2026-03-03, 2026-03-13
+
+    section Fase 3: Prototipado Frontend
+    Inicialización Next.js + React          :done, f3a, 2026-03-02, 2026-03-07
+    Integración frontend-backend            :done, f3b, 2026-03-07, 2026-03-14
+    UI/UX del chat y selector de modelos    :done, f3c, 2026-03-10, 2026-03-20
+
+    section Fase 4: Despliegue
+    Configuración del servidor              :active, f4a, 2026-03-16, 2026-03-22
+    Despliegue del stack completo           :f4b, 2026-03-20, 2026-03-25
+    Pruebas en entorno de producción        :f4c, 2026-03-23, 2026-03-27
+
+    section Fase 5: Benchmarking y Evaluación
+    Diseño de preguntas de prueba           :f5a, 2026-03-30, 2026-04-05
+    Ejecución de benchmarks multi-modelo    :f5b, 2026-04-03, 2026-04-12
+    Análisis de métricas y resultados       :f5c, 2026-04-10, 2026-04-17
+
+    section Fase 6: Optimización
+    Optimización de prompts y retrieval     :f6a, 2026-04-13, 2026-04-19
+    Ajuste fino basado en benchmarks        :f6b, 2026-04-17, 2026-04-22
+    Pruebas de estrés y rendimiento         :f6c, 2026-04-20, 2026-04-24
+
+    section Fase 7: Documentación Final
+    Documentación técnica                   :f7a, 2026-04-27, 2026-05-03
+    Informe final del proyecto              :f7b, 2026-04-30, 2026-05-06
+    Preparación de la sustentación          :f7c, 2026-05-04, 2026-05-08
+
+    section Fase 8: Sustentación
+    Defensa del proyecto                    :milestone, f8a, 2026-05-15, 0d
+```
+
+### Detalle por fase
+
+| Fase | Semanas | Periodo | Actividades | Estado | Responsable |
+|------|---------|---------|-------------|--------|-------------|
+| **1. Investigación y Diseño** | 1–4 | Ene 26 – Feb 20 | Propuesta de proyecto, ficha, análisis de requisitos, selección de tecnologías (Ollama, LangChain, ChromaDB, sentence-transformers) | ✅ Completada | Todos |
+| **2. Prototipado Backend** | 5–7 | Feb 23 – Mar 13 | Web scraping de normatividad Uninorte, pipeline de ingesta PDF→chunks→ChromaDB, configuración Ollama + prompt engineering, API REST con FastAPI | ✅ Completada | Todos |
+| **3. Prototipado Frontend** | 6–8 | Mar 2 – Mar 20 | Inicialización Next.js + React + Tailwind CSS, integración frontend↔backend via proxy API, interfaz de chat con selector de modelos SLM | ✅ Completada | Todos |
+| **4. Despliegue** | 8–9 | Mar 16 – Mar 27 | Configuración del servidor de despliegue (cluster/Azure/OpenLab), despliegue del stack completo (Ollama + backend + frontend), pruebas en entorno de producción | 🔄 En curso | Todos |
+| **5. Benchmarking y Evaluación** | 10–12 | Mar 30 – Abr 17 | Diseño del set de preguntas de prueba con ground truth, ejecución de benchmarks multi-modelo (qwen2.5:3b, llama3.2, phi3, etc.), análisis de métricas (latencia, precisión, alucinaciones, tok/s) | ⏳ Pendiente | Todos |
+| **6. Optimización** | 12–13 | Abr 13 – Abr 24 | Optimización de prompts y parámetros de retrieval, ajuste fino basado en resultados del benchmarking, pruebas de estrés y rendimiento | ⏳ Pendiente | Todos |
+| **7. Documentación Final** | 14–15 | Abr 27 – May 8 | Documentación técnica completa, elaboración del informe final, preparación de la sustentación | ⏳ Pendiente | Todos |
+| **8. Sustentación** | 16+ | May – Jun 2026 | Defensa del proyecto ante el jurado | ⏳ Pendiente | Todos |
+
+### Hitos principales
+
+| Hito | Fecha estimada | Entregable |
+|------|---------------|------------|
+| Informe 1 (estructura + propuesta) | Mar 5 ✅ | README.md con secciones 1-8 |
+| Cronograma v1 | Mar 11 ✅ | Branch `crono1` con cronograma Gantt |
+| Prototipo funcional desplegado | Mar 27 | Sistema accesible en servidor |
+| Resultados de benchmarking | Abr 17 | Métricas comparativas de modelos SLM |
+| Informe final | May 8 | Documento completo del proyecto |
+| Sustentación | May–Jun | Defensa ante jurado |
 
 ---
