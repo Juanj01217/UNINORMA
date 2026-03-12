@@ -1,0 +1,28 @@
+@startuml
+title Interacción entre Módulos
+
+package "Módulo de Ingesta de Datos (Offline)" as Ingesta {
+    [Extractor de Fuentes\n(PDF / Web)] as Extractor
+    [Text Chunker\n(RecursiveCharacter)] as Chunker
+    [Vectorizador de Texto] as VectorizadorOffline
+    
+    Extractor --> Chunker : Texto crudo
+    Chunker --> VectorizadorOffline : Fragmentos (Chunks)
+}
+
+package "Módulo de Consulta (Online)" as Consulta {
+    [API de Chat] as ChatAPI
+    [Vectorizador de Consulta] as VectorizadorOnline
+    [Motor de Generación\n(Ollama)] as Generador
+}
+
+database "Base de Datos Vectorial\n(ChromaDB)" as Chroma
+
+VectorizadorOffline --> Chroma : Almacena embeddings y metadata
+ChatAPI --> VectorizadorOnline : Recibe pregunta del usuario
+VectorizadorOnline --> Chroma : Consulta de similitud del coseno
+Chroma ..> ChatAPI : Retorna contexto normativo
+ChatAPI --> Generador : Inyecta contexto y pregunta
+Generador ..> ChatAPI : Retorna respuesta fundamentada
+
+@enduml
