@@ -151,9 +151,62 @@ El sistema se estructura en una arquitectura modular dividida en dos fases princ
 
 - **Fase 4**: Desarrollo del Frontend en React/Next.js e integración mediante API REST. 
 
-- **Fase 5**: Pruebas de estrés, validación de fidelidad semántica (ground truth testing) y consolidación del informe final de proyecto. 
+- **Fase 5**: Pruebas de estrés, validación de fidelidad semántica (ground truth testing) y consolidación del informe final de proyecto.
 
-## 11. Diagramas
+---
+
+## 11. Cronograma de Trabajo
+
+**Equipo:** Carlos Mendoza, Jesús De la Cruz, Juan José Aragón
+**Periodo:** Semestre 2026-1 (Ene 26 – May 15, 16 semanas) | Sustentación: May–Jun 2026
+
+```mermaid
+gantt
+    title Cronograma del Proyecto - Asistente RAG + SLM Uninorte
+    dateFormat  YYYY-MM-DD
+    axisFormat  %b %d
+
+    section Fase 1: Investigación y Diseño
+    Propuesta y ficha de proyecto           :done, f1a, 2026-01-26, 2026-02-06
+    Análisis de requisitos                  :done, f1b, 2026-02-02, 2026-02-13
+    Selección de stack tecnológico          :done, f1c, 2026-02-09, 2026-02-20
+
+    section Fase 2: Prototipado Backend
+    Web scraping y adquisición de datos     :done, f2a, 2026-02-23, 2026-03-02
+    Pipeline de ingesta (PDF→ChromaDB)      :done, f2b, 2026-02-23, 2026-03-07
+    Configuración Ollama + prompts          :done, f2c, 2026-03-03, 2026-03-10
+    API REST (FastAPI)                      :done, f2d, 2026-03-03, 2026-03-13
+
+    section Fase 3: Prototipado Frontend
+    Inicialización Next.js + React          :done, f3a, 2026-03-02, 2026-03-07
+    Integración frontend-backend            :done, f3b, 2026-03-07, 2026-03-14
+    UI/UX del chat y selector de modelos    :done, f3c, 2026-03-10, 2026-03-20
+
+    section Fase 4: Despliegue
+    Configuración del servidor              :active, f4a, 2026-03-16, 2026-03-22
+    Despliegue del stack completo           :f4b, 2026-03-20, 2026-03-25
+    Pruebas en entorno de producción        :f4c, 2026-03-23, 2026-03-27
+
+    section Fase 5: Benchmarking y Evaluación
+    Diseño de preguntas de prueba           :f5a, 2026-03-30, 2026-04-05
+    Ejecución de benchmarks multi-modelo    :f5b, 2026-04-03, 2026-04-12
+    Análisis de métricas y resultados       :f5c, 2026-04-10, 2026-04-17
+
+    section Fase 6: Optimización
+    Optimización de prompts y retrieval     :f6a, 2026-04-13, 2026-04-19
+    Ajuste fino basado en benchmarks        :f6b, 2026-04-17, 2026-04-22
+    Pruebas de estrés y rendimiento         :f6c, 2026-04-20, 2026-04-24
+
+    section Fase 7: Documentación Final
+    Documentación técnica                   :f7a, 2026-04-27, 2026-05-03
+    Informe final del proyecto              :f7b, 2026-04-30, 2026-05-06
+    Preparación de la sustentación          :f7c, 2026-05-04, 2026-05-08
+
+    section Fase 8: Sustentación
+    Defensa del proyecto                    :milestone, f8a, 2026-05-15, 0d
+```
+
+## 12. Diagramas
 
 <img width="784" height="753" alt="image" src="https://github.com/user-attachments/assets/ba249ff2-a50c-4c4a-a403-b347f0df8303" />
 
@@ -161,7 +214,7 @@ El sistema se estructura en una arquitectura modular dividida en dos fases princ
 
 <img width="1344" height="553" alt="image" src="https://github.com/user-attachments/assets/973cd97a-c6cf-406e-b464-5cbacd7af30f" />
 
-## 12. Referencias
+## 13. Referencias
 
 - Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N., ... & Kiela, D. (2020). Retrieval-augmented generation for knowledge-intensive nlp tasks. Advances in Neural Information Processing Systems, 33, 9459-9474. 
 
