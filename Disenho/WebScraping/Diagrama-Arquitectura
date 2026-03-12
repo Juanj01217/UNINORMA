@@ -1,0 +1,37 @@
+@startuml
+!theme vibrant
+skinparam componentStyle uml2
+skinparam linetype ortho
+
+title Arquitectura del Sistema - Asistente RAG UNINORMA
+
+actor "Usuario Universitario" as User
+
+package "Capa de Presentación" {
+    node "Frontend (Next.js 16)" as UI {
+        component "Interfaz de Chat\n(React + Tailwind)" as Chat
+    }
+}
+
+package "Capa de Lógica y Orquestación" {
+    node "Backend (FastAPI)" as API {
+        component "Orquestador RAG\n(LangChain)" as RAG
+        component "Generador de Embeddings\n(Sentence-Transformers)" as Embeddings
+    }
+}
+
+package "Capa de Datos e Inferencia (Local)" {
+    database "Vector Store\n(ChromaDB)" as DB
+    node "Motor de Inferencia\n(Ollama)" as LLM {
+        component "Qwen 2.5:3b\n(SLM Cuantizado)" as Model
+    }
+}
+
+User <--> Chat : Lenguaje Natural
+Chat <--> RAG : Peticiones HTTP
+RAG --> Embeddings : Texto de consulta
+Embeddings --> DB : Búsqueda de similitud vectorial
+DB --> RAG : Top-K Documentos Normativos
+RAG --> LLM : Prompt + Contexto
+LLM --> RAG : Respuesta Generada
+@enduml
