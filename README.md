@@ -171,6 +171,5 @@ El sistema se estructura en una arquitectura modular dividida en dos fases princ
 
 - Qwen Team. (2024). Qwen2.5 Technical Report.  
 
-*(COMPLETAR: responsable asignado por tarea, hito interno, retroalimentación esperada).*
 
 ---
