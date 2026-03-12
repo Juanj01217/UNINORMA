@@ -153,7 +153,15 @@ El sistema se estructura en una arquitectura modular dividida en dos fases princ
 
 - **Fase 5**: Pruebas de estrés, validación de fidelidad semántica (ground truth testing) y consolidación del informe final de proyecto. 
 
-## 11. Referencias
+## 11. Diagramas
+
+<img width="784" height="753" alt="image" src="https://github.com/user-attachments/assets/ba249ff2-a50c-4c4a-a403-b347f0df8303" />
+
+<img width="1277" height="597" alt="image" src="https://github.com/user-attachments/assets/34f04d49-c2a7-4caf-9913-a8ec42761b49" />
+
+<img width="1344" height="553" alt="image" src="https://github.com/user-attachments/assets/973cd97a-c6cf-406e-b464-5cbacd7af30f" />
+
+## 12. Referencias
 
 - Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N., ... & Kiela, D. (2020). Retrieval-augmented generation for knowledge-intensive nlp tasks. Advances in Neural Information Processing Systems, 33, 9459-9474. 
 
