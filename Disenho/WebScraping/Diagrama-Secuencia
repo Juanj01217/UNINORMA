@@ -1,0 +1,40 @@
+@startuml
+title Secuencia - Consulta de Normatividad Institucional
+
+actor Usuario
+participant "Frontend\n(Next.js)" as UI
+participant "API RAG\n(FastAPI)" as API
+participant "Embeddings\n(MiniLM)" as EMB
+participant "Vector Store\n(ChromaDB)" as DB
+participant "SLM\n(Ollama - Qwen)" as LLM
+
+Usuario -> UI: Envía pregunta (ej. "¿Cómo cancelo una clase?")
+activate UI
+
+UI -> API: POST /api/chat { query }
+activate API
+
+API -> EMB: Generar embedding de la pregunta
+activate EMB
+EMB --> API: Vector denso [0.1, 0.4, ...]
+deactivate EMB
+
+API -> DB: query(vector, n_results=3)
+activate DB
+DB --> API: Retorna Top-3 chunks de normatividad
+deactivate DB
+
+API -> API: Construir Prompt (Instrucciones + Contexto + Pregunta)
+
+API -> LLM: POST /api/generate { prompt, stream: true }
+activate LLM
+
+LLM --> API: Stream de tokens (Respuesta)
+deactivate LLM
+
+API --> UI: Stream HTTP / Server-Sent Events
+deactivate API
+
+UI --> Usuario: Renderiza respuesta progresivamente
+deactivate UI
+@enduml
