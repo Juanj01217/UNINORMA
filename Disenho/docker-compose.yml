@@ -1,0 +1,41 @@
+services:
+
+  # --- Servidor Ollama (LLM local) ---
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama   # modelos persisten entre reinicios
+    restart: unless-stopped
+
+  # --- Backend FastAPI + RAG ---
+  backend:
+    build:
+      context: .                      # contexto = Disenho/ (accede a Prototipo/ y WebScraping/)
+      dockerfile: Prototipo/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  # --- Frontend Next.js ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api     # browser llama /api/* → proxy interno → backend
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://backend:8000  # proxy server-side usa esta URL interna
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  ollama_models:                      # mantiene los modelos descargados entre reinicios

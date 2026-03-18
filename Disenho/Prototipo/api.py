@@ -7,6 +7,7 @@ Uso:
     python api.py
     uvicorn api:app --reload --port 8000
 """
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -21,6 +22,8 @@ from src.embeddings import get_embedding_model
 from src.vector_store import load_vector_store, get_retriever
 from src.rag_chain import create_rag_chain, query_rag, format_response_with_sources
 from src.ollama_client import check_ollama_running, get_available_models
+
+_OLLAMA_NO_ACTIVO = "Ollama no esta activo."
 
 app = FastAPI(
     title="Asistente de Normatividad Uninorte",
@@ -82,7 +85,7 @@ class ModelLoadRequest(BaseModel):
 class StatusResponse(BaseModel):
     ollama_running: bool
     available_models: dict
-    active_model: Optional[str]
+    active_model: Optional[str] = None
     vector_store_ready: bool
 
 
@@ -101,11 +104,11 @@ def health():
     )
 
 
-@app.get("/models")
+@app.get("/models", responses={503: {"description": "Ollama no esta activo."}})
 def list_models():
     """Devuelve la lista de modelos SLM configurados y cuales estan instalados."""
     if not check_ollama_running():
-        raise HTTPException(status_code=503, detail="Ollama no esta activo.")
+        raise HTTPException(status_code=503, detail=_OLLAMA_NO_ACTIVO)
     available = get_available_models()
     return {
         "models": SLM_MODELS,
@@ -115,11 +118,15 @@ def list_models():
     }
 
 
-@app.post("/models/load")
+@app.post("/models/load", responses={
+    400: {"description": "Modelo no reconocido."},
+    500: {"description": "Error interno al cargar el modelo."},
+    503: {"description": "Ollama no esta activo."},
+})
 def load_model(body: ModelLoadRequest):
     """Carga (o cambia) el modelo SLM activo."""
     if not check_ollama_running():
-        raise HTTPException(status_code=503, detail="Ollama no esta activo.")
+        raise HTTPException(status_code=503, detail=_OLLAMA_NO_ACTIVO)
     if body.model not in SLM_MODELS:
         raise HTTPException(status_code=400, detail=f"Modelo '{body.model}' no reconocido.")
     try:
@@ -129,13 +136,17 @@ def load_model(body: ModelLoadRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, responses={
+    400: {"description": "Pregunta vacia."},
+    500: {"description": "Error en el pipeline RAG."},
+    503: {"description": "Ollama no esta activo."},
+})
 def query(body: QueryRequest):
     """Realiza una consulta RAG sobre la normatividad de Uninorte."""
     if not body.question.strip():
         raise HTTPException(status_code=400, detail="La pregunta no puede estar vacia.")
     if not check_ollama_running():
-        raise HTTPException(status_code=503, detail="Ollama no esta activo.")
+        raise HTTPException(status_code=503, detail=_OLLAMA_NO_ACTIVO)
 
     try:
         chain = _init_chain(body.model)
@@ -168,4 +179,5 @@ def query(body: QueryRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    uvicorn.run("api:app", host=host, port=8000, reload=True)

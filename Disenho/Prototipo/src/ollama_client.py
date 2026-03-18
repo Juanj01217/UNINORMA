@@ -99,7 +99,7 @@ def print_status():
 
     missing = [m for m, v in available.items() if not v]
     if missing:
-        print(f"\nPara instalar los modelos faltantes:")
+        print("\nPara instalar los modelos faltantes:")
         for model in missing:
             print(f"  ollama pull {model}")
 

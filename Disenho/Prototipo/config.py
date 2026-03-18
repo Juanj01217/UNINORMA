@@ -1,4 +1,5 @@
 """Configuracion centralizada del prototipo RAG."""
+import os
 from pathlib import Path
 
 # === Rutas ===
@@ -24,7 +25,7 @@ EMBEDDING_MODELS = {
 DEFAULT_EMBEDDING_MODEL = "minilm-multilingual"
 
 # === Configuracion de Ollama ===
-OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 SLM_MODELS = [
     "qwen2.5:1.5b",
     "qwen2.5:3b",

@@ -16,7 +16,8 @@ def clean_text(raw_text: str) -> str:
     # Eliminar lineas que solo tienen numeros (paginacion)
     text = re.sub(r"^\s*\d+\s*$", "", text, flags=re.MULTILINE)
     # Limpiar espacios al inicio/final de lineas
-    text = re.sub(r"^ +| +$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^ +", "", text, flags=re.MULTILINE)
+    text = re.sub(r" +$", "", text, flags=re.MULTILINE)
     # Eliminar lineas vacias consecutivas
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -81,7 +82,7 @@ def extract_all_pdfs(pdf_dir: Path) -> List[Dict[str, Any]]:
                 print(f"    -> {doc_data['num_pages']} paginas, "
                       f"{len(doc_data['full_text'])} caracteres")
             else:
-                print(f"    -> ADVERTENCIA: Sin texto extraible")
+                print("    -> ADVERTENCIA: Sin texto extraible")
         except Exception as e:
             print(f"    -> ERROR: {e}")
 

@@ -24,12 +24,14 @@ from src.embeddings import get_embedding_model
 from src.vector_store import create_vector_store
 from src.web_scraper import scrape_normatividad
 
+_PDF_GLOB = "*.pdf"
+
 
 def copy_pdfs_to_data(source_dir: Path, dest_dir: Path) -> int:
     """Copia PDFs del directorio de scraping al directorio de datos del prototipo."""
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    pdf_files = list(source_dir.glob("*.pdf"))
+    pdf_files = list(source_dir.glob(_PDF_GLOB))
     if not pdf_files:
         raise FileNotFoundError(
             f"No se encontraron PDFs en {source_dir}.\n"
@@ -63,7 +65,7 @@ def obtain_content(dest_dir: Path, force_download: bool = False):
 
     # Limpiar PDFs duplicados antes de scraping si se fuerza descarga
     if force_download:
-        existing_pdfs = list(dest_dir.glob("*.pdf"))
+        existing_pdfs = list(dest_dir.glob(_PDF_GLOB))
         if existing_pdfs:
             print(f"  Limpiando {len(existing_pdfs)} PDFs existentes para descarga limpia...")
             for pdf in existing_pdfs:
@@ -71,7 +73,7 @@ def obtain_content(dest_dir: Path, force_download: bool = False):
 
     results = scrape_normatividad(pdf_dest_dir=dest_dir)
 
-    print(f"\n  Resumen scraping:")
+    print("\n  Resumen scraping:")
     print(f"    PDFs descargados: {results['pdfs_downloaded']}")
     print(f"    Documentos web extraidos: {len(results['web_documents'])}")
     if results["errors"]:
@@ -98,7 +100,7 @@ def run_ingestion(
         print("PASO 1: Obteniendo contenido de normatividad")
         print("=" * 60)
         web_documents = obtain_content(RAW_PDF_DIR, force_download)
-        pdf_count = len(list(pdf_dir.glob("*.pdf")))
+        pdf_count = len(list(pdf_dir.glob(_PDF_GLOB)))
         print(f"-> {pdf_count} PDFs + {len(web_documents)} paginas web\n")
     else:
         print("=" * 60)
@@ -109,7 +111,7 @@ def run_ingestion(
     print("=" * 60)
     print("PASO 2: Extrayendo texto de PDFs")
     print("=" * 60)
-    pdf_files = list(pdf_dir.glob("*.pdf"))
+    pdf_files = list(pdf_dir.glob(_PDF_GLOB))
     if pdf_files:
         documents = extract_all_pdfs(pdf_dir)
         print(f"-> {len(documents)} PDFs procesados\n")
@@ -154,7 +156,7 @@ def run_ingestion(
     print("PASO 5: Creando embeddings y vector store")
     print("=" * 60)
     embedding_model = get_embedding_model(embedding_model_key)
-    vector_store = create_vector_store(chunks, embedding_model)
+    create_vector_store(chunks, embedding_model)
 
     # Resumen
     pdf_count = len([d for d in documents if d.get("source_type") != "web"])
@@ -167,7 +169,7 @@ def run_ingestion(
     print(f"  Total documentos: {len(documents)}")
     print(f"  Chunks creados: {len(chunks)}")
     print(f"  Modelo de embedding: {embedding_model_key}")
-    print(f"  Vector store listo para consultas")
+    print("  Vector store listo para consultas")
     print("=" * 60)
 
 

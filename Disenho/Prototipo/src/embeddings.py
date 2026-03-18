@@ -29,5 +29,5 @@ def get_embedding_model(
         encode_kwargs={"normalize_embeddings": True},
     )
 
-    print(f"Modelo de embedding cargado exitosamente")
+    print("Modelo de embedding cargado exitosamente")
     return embeddings
