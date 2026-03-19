@@ -119,7 +119,45 @@ El sistema se estructura en una arquitectura modular dividida en dos fases princ
 
   b. **Backend (FastAPI + LangChain)**: Recibe la consulta, genera su embedding y realiza una búsqueda de similitud del coseno en ChromaDB para obtener los fragmentos normativos más relevantes (Top-K). 
 
-  c. **Generación (Ollama + Qwen 2.5:3b)**: Un prompt de sistema estricto (system prompt) combina la consulta del usuario con el contexto recuperado. El SLM procesa esta matriz y sintetiza una respuesta precisa, citando invariablemente las fuentes provistas en el contexto. 
+  c. **Generación (Ollama + Qwen 2.5:3b)**: Un prompt de sistema estricto (system prompt) combina la consulta del usuario con el contexto recuperado. El SLM procesa esta matriz y sintetiza una respuesta precisa, citando invariablemente las fuentes provistas en el contexto.
+
+### 7.1. Descripción general de la arquitectura
+El sistema adopta una arquitectura de tipo Cliente-Servidor orientada a microservicios en un entorno de ejecución 100% local (Local-first/On-Premise). El enfoque general de la solución busca aislar el conocimiento paramétrico del no paramétrico mediante la arquitectura RAG, priorizando la soberanía de los datos institucionales. En contraste con arquitecturas basadas en *Backend as a Service* (BaaS) o que dependen fuertemente de APIs en la nube de terceros, esta propuesta desacopla el motor de inferencia generativa del orquestador del flujo, garantizando privacidad total y gratuidad operativa.
+
+### 7.1.2. Componentes del sistema e interacción
+Para cumplir con los requerimientos funcionales y no funcionales, el sistema se divide en los siguientes componentes principales:
+
+- **Frontend (Next.js 16, React, Tailwind CSS):** Actúa como la capa de presentación. Su responsabilidad es capturar la consulta del usuario en lenguaje natural y renderizar los flujos de texto y metadatos de las fuentes.
+- **API Core / Backend (FastAPI):** Expone los *endpoints* RESTful. Es responsable de la recepción de solicitudes, la validación de *payloads* y el enrutamiento interno.
+- **Orquestador RAG (LangChain):** Componente middleware responsable de la lógica central. Se encarga de aplicar las técnicas de *chunking*, instanciar el modelo de *embeddings* (paraphrase-multilingual-MiniLM-L12-v2) y construir el *System Prompt* inyectando el contexto recuperado.
+- **Base de Datos Vectorial (ChromaDB):** Su responsabilidad exclusiva es el almacenamiento de los vectores densos generados en la fase de ingesta y la ejecución eficiente de búsquedas por similitud del coseno.
+- **Motor de Inferencia LLM (Ollama + Qwen 2.5:3b):** Servicio subyacente responsable de ejecutar la cuantización (Q4_K_M) y generar la respuesta en lenguaje natural basada estrictamente en el contexto entregado.
+
+**Diagrama de Arquitectura del Sistema:**
+<img width="1277" height="597" alt="Arquitectura del Sistema" src="https://github.com/user-attachments/assets/34f04d49-c2a7-4caf-9913-a8ec42761b49" />
+
+### 7.1.3. Interacción entre módulos
+El sistema minimiza el grado de interdependencia mediante flujos de datos unidireccionales y el uso de abstracciones:
+
+1. El **Frontend** envía la consulta del usuario mediante una petición HTTP al **Backend (FastAPI)**.
+2. El Backend delega el control al **Orquestador (LangChain)**, el cual transforma el texto en un vector denso.
+3. LangChain consulta a **ChromaDB**, extrayendo el *Top-K* de fragmentos normativos con mayor proximidad semántica.
+4. LangChain ensambla el *prompt* estructurado (Consulta + Fragmentos) y lo transmite al **Motor Ollama**.
+5. Ollama retorna los *tokens* generados mediante *streaming*, flujo que atraviesa la arquitectura de regreso hasta el Frontend.
+
+Este diseño exhibe un bajo nivel de acoplamiento; la estandarización de LangChain otorga una alta facilidad de sustitución de componentes. Si en fases posteriores se requiere migrar de ChromaDB a Milvus, o de Qwen a la familia Llama, el cambio no afectará la capa de presentación.
+
+**Diagrama de Interacción y Secuencia:**
+<img width="1344" height="553" alt="Diagrama de Secuencia" src="https://github.com/user-attachments/assets/973cd97a-c6cf-406e-b464-5cbacd7af30f" />
+
+### 7.1.4. Análisis de Comportamiento
+Al someter las secuencias principales de esta arquitectura a evaluación:
+- **Eficiencia del flujo:** El diseño elimina los tiempos muertos por latencia de red externa, lo cual suprime pasos innecesarios de validación de tokens de APIs comerciales.
+- **Cuellos de botella:** El límite físico de la arquitectura reside en el *Throughput* del hardware local. La generación de tokens del SLM (Qwen 2.5:3b) monopoliza la VRAM/RAM, lo que representa un cuello de botella directo frente a cargas concurrentes simultáneas.
+- **Desacoplamiento:** La interacción entre módulos refleja una cohesión alta y un desacoplamiento eficiente, aislando el procesamiento computacional pesado (vectorización e inferencia) de la gestión de red (FastAPI).
+
+### 7.1.5. Cierre
+La arquitectura aquí expuesta responde directamente a las restricciones del problema planteado: el acceso ineficiente y disperso a la normatividad institucional. Las decisiones de diseño documentadas reflejan una integración que prioriza la viabilidad técnica en hardware de consumo. Su principal fortaleza radica en la implementación de un pipeline 100% *On-Premise*, asegurando que la soberanía de los datos de la institución no se vea comprometida, manteniendo la latencia operativa contenida y garantizando la modularidad necesaria para escalar o refactorizar sin reescribir la lógica de negocio fundamental.
 
 ## 8. Requerimientos preliminares
 
