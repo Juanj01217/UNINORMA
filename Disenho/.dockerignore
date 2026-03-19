@@ -1,0 +1,23 @@
+# Control de versiones
+.git/
+.gitignore
+
+# Entornos virtuales Python
+Prototipo/venv/
+Prototipo/__pycache__/
+Prototipo/**/__pycache__/
+Prototipo/**/*.pyc
+Prototipo/**/*.pyo
+
+# Dependencias frontend
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+
+# Datos de benchmark (no necesarios para el deploy)
+Prototipo/benchmark/results/
+Prototipo/**/*.ipynb
+
+# WebScraping notebooks (solo los PDFs se copian al backend)
+WebScraping/dataCollection.ipynb
+WebScraping/Readme.md

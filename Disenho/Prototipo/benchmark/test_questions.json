@@ -1,0 +1,181 @@
+{
+  "version": "1.0",
+  "description": "Preguntas de evaluacion para el RAG de normatividad Uninorte",
+  "questions": [
+    {
+      "id": "q001",
+      "question": "Cuales son los derechos de los egresados de la Universidad del Norte?",
+      "expected_source": "Reglamento%20de%20Egresados%20Uninorte.pdf",
+      "category": "reglamento_egresados",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q002",
+      "question": "Que requisitos debe cumplir un profesor para ser contratado en Uninorte?",
+      "expected_source": "Reg_profesor_%20junio_2021.pdf",
+      "category": "reglamento_profesor",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q003",
+      "question": "Cual es la jornada laboral establecida en el reglamento interno de trabajo?",
+      "expected_source": "reglamento_Interno_Trabajo_Uninorte.pdf",
+      "category": "reglamento_trabajo",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q004",
+      "question": "Que establece la politica de derechos humanos de la Universidad del Norte?",
+      "expected_source": "Res_Rect_No_35_Pol_Derechos_Humanos_Un.pdf",
+      "category": "derechos_humanos",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q005",
+      "question": "Que dice el reglamento sobre propiedad intelectual de las obras creadas por profesores?",
+      "expected_source": "reglamento_propiedad_intelectual.pdf",
+      "category": "propiedad_intelectual",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q006",
+      "question": "Cuales son las categorias de profesores que establece el reglamento?",
+      "expected_source": "Reg_profesor_%20junio_2021.pdf",
+      "category": "reglamento_profesor",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q007",
+      "question": "Que obligaciones tienen los trabajadores segun el reglamento interno?",
+      "expected_source": "reglamento_Interno_Trabajo_Uninorte.pdf",
+      "category": "reglamento_trabajo",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q008",
+      "question": "Que servicios de bienestar universitario ofrece Uninorte?",
+      "expected_source": "Res_Rect_N_Est_Bienestar_Un.pdf",
+      "category": "bienestar",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q009",
+      "question": "Cuales son las sanciones por faltas graves en el reglamento interno de trabajo?",
+      "expected_source": "reglamento_Interno_Trabajo_Uninorte.pdf",
+      "category": "reglamento_trabajo",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q010",
+      "question": "Como se clasifican las invenciones y desarrollos tecnologicos en el reglamento de propiedad intelectual?",
+      "expected_source": "reglamento_propiedad_intelectual.pdf",
+      "category": "propiedad_intelectual",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q011",
+      "question": "Que dice la normativa sobre el periodo de prueba de los profesores?",
+      "expected_source": "Reg_profesor_%20junio_2021.pdf",
+      "category": "reglamento_profesor",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q012",
+      "question": "Cuales son los mecanismos de resolucion de conflictos mencionados en la politica de derechos humanos?",
+      "expected_source": "Res_Rect_No_35_Pol_Derechos_Humanos_Un.pdf",
+      "category": "derechos_humanos",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q013",
+      "question": "Que protocolo debe seguirse en caso de acoso segun la normatividad de Uninorte?",
+      "expected_source": "Res_Rec_No_66_protocolo_uninorte.pdf",
+      "category": "protocolo",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q014",
+      "question": "Que relacion existe entre el reglamento de profesores y el reglamento de propiedad intelectual respecto a las obras academicas?",
+      "expected_source": "reglamento_propiedad_intelectual.pdf",
+      "category": "cross_reference",
+      "difficulty": "hard"
+    },
+    {
+      "id": "q015",
+      "question": "Como se articulan los derechos humanos con las politicas de bienestar universitario?",
+      "expected_source": "Res_Rect_No_35_Pol_Derechos_Humanos_Un.pdf",
+      "category": "cross_reference",
+      "difficulty": "hard"
+    },
+    {
+      "id": "q016",
+      "question": "Que dice la normatividad sobre el teletrabajo en la Universidad del Norte?",
+      "expected_source": "NONE",
+      "category": "negation",
+      "difficulty": "hard"
+    },
+    {
+      "id": "q017",
+      "question": "Cual es la politica de admisiones para estudiantes de pregrado?",
+      "expected_source": "NONE",
+      "category": "negation",
+      "difficulty": "hard"
+    },
+    {
+      "id": "q018",
+      "question": "Cuanto gana un profesor catedratico en Uninorte?",
+      "expected_source": "NONE",
+      "category": "negation",
+      "difficulty": "hard"
+    },
+    {
+      "id": "q019",
+      "question": "Que dice el Consejo Academico en la resolucion numero 32?",
+      "expected_source": "Res_Con_Aca_No_32.pdf",
+      "category": "resoluciones",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q020",
+      "question": "Cuales son las causales de terminacion del contrato de trabajo segun el reglamento interno?",
+      "expected_source": "reglamento_Interno_Trabajo_Uninorte.pdf",
+      "category": "reglamento_trabajo",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q021",
+      "question": "Que normas aplican sobre vacaciones y permisos del personal?",
+      "expected_source": "reglamento_Interno_Trabajo_Uninorte.pdf",
+      "category": "reglamento_trabajo",
+      "difficulty": "medium"
+    },
+    {
+      "id": "q022",
+      "question": "Quien es el rector actual de la Universidad del Norte?",
+      "expected_source": "NONE",
+      "category": "negation",
+      "difficulty": "hard"
+    },
+    {
+      "id": "q023",
+      "question": "Que dice el reglamento estudiantil sobre las notas minimas para aprobar una materia?",
+      "expected_source": "nrr19.pdf",
+      "category": "reglamento_estudiante",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q024",
+      "question": "Cuales son los deberes de los egresados de Uninorte?",
+      "expected_source": "Reglamento%20de%20Egresados%20Uninorte.pdf",
+      "category": "reglamento_egresados",
+      "difficulty": "easy"
+    },
+    {
+      "id": "q025",
+      "question": "Que procedimiento se sigue para la evaluacion del desempeno de los profesores?",
+      "expected_source": "Reg_profesor_%20junio_2021.pdf",
+      "category": "reglamento_profesor",
+      "difficulty": "medium"
+    }
+  ]
+}

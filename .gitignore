@@ -1,5 +1,13 @@
-\myenv  
+\myenv
 \venv
 __pycache__
 .env
-/Diseño/WebScraping/reglamentos
+/Disenho/WebScraping/reglamentos
+
+# Prototipo - datos y resultados locales
+/Disenho/Prototipo/data/raw/
+/Disenho/Prototipo/data/processed/
+/Disenho/Prototipo/data/chroma_db/
+/Disenho/Prototipo/benchmark/results/
+
+/.claude
