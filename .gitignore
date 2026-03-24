@@ -2,12 +2,12 @@
 \venv
 __pycache__
 .env
-/Disenho/WebScraping/reglamentos
+/deploy/WebScraping/reglamentos
 
 # Prototipo - datos y resultados locales
-/Disenho/Prototipo/data/raw/
-/Disenho/Prototipo/data/processed/
-/Disenho/Prototipo/data/chroma_db/
-/Disenho/Prototipo/benchmark/results/
+/deploy/Prototipo/data/raw/
+/deploy/Prototipo/data/processed/
+/deploy/Prototipo/data/chroma_db/
+/deploy/Prototipo/benchmark/results/
 
 /.claude
