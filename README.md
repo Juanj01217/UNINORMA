@@ -275,5 +275,7 @@ gantt
 
 - Qwen Team. (2024). Qwen2.5 Technical Report.  
 
+- Anthropic. (2024). Claude (Versión 4.6 Sonnet) [Modelo de lenguaje grande]. https://claude.ai
 
+- Google. (2026). Gemini (Versión 3.1 Pro) [Modelo de lenguaje grande]. https://gemini.google.com
 ---
