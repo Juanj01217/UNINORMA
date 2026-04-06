@@ -18,9 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 # Copiar el código fuente y datos (incluye data/chroma_db y data/raw)
 COPY Prototipo/ .
 
-# Copiar los PDFs originales como fallback si se necesita re-ingestar
-COPY WebScraping/reglamentos/ /reglamentos/
-
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
