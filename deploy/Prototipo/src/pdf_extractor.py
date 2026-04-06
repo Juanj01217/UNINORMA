@@ -6,6 +6,9 @@ from urllib.parse import unquote
 
 from liteparse import LiteParse
 
+# Umbral minimo de caracteres por pagina para considerar que hay texto real
+_MIN_TEXT_CHARS = 50
+
 
 def clean_text(raw_text: str) -> str:
     """Limpia texto extraido de PDF: normaliza espacios, encoding, etc."""
@@ -34,26 +37,31 @@ def clean_filename(filename: str) -> str:
     return name
 
 
-def _get_parsed_text(result: object) -> str:
-    """Extrae texto del resultado de LiteParse de forma defensiva."""
-    for attr in ("text", "content", "markdown"):
-        if hasattr(result, attr):
-            value = getattr(result, attr)
-            if isinstance(value, str) and value.strip():
-                return value
-    return str(result)
+def _parse_with_liteparse(pdf_path: Path, ocr_enabled: bool) -> str:
+    """Ejecuta LiteParse y devuelve el texto completo del documento."""
+    parser = LiteParse()
+    result = parser.parse(str(pdf_path), ocr_enabled=ocr_enabled)
+    return result.text
 
 
 def extract_text_from_pdf(pdf_path: Path) -> Dict[str, Any]:
     """
-    Extrae todo el texto de un archivo PDF usando LiteParse.
+    Extrae todo el texto de un archivo PDF con LiteParse.
+
+    Estrategia:
+    - Intenta sin OCR primero (rapido, valido para PDFs con texto seleccionable).
+    - Si el resultado esta vacio o es muy corto, reintenta con OCR activado
+      (necesario para PDFs escaneados o imagen-only).
 
     Returns:
         Diccionario con filename, title, num_pages, full_text, pages.
     """
-    parser = LiteParse()
-    result = parser.parse(str(pdf_path))
-    raw_text = _get_parsed_text(result)
+    raw_text = _parse_with_liteparse(pdf_path, ocr_enabled=False)
+
+    # Fallback con OCR para PDFs imagen-only
+    if len(raw_text.strip()) < _MIN_TEXT_CHARS:
+        print(f"    -> Sin texto seleccionable, reintentando con OCR...")
+        raw_text = _parse_with_liteparse(pdf_path, ocr_enabled=True)
 
     # LiteParse separa paginas con form-feed (\f)
     raw_pages = raw_text.split("\f") if "\f" in raw_text else [raw_text]
