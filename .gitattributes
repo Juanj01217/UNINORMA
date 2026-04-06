@@ -1,0 +1,11 @@
+# Normalizar line endings al hacer checkout
+* text=auto
+
+# Scripts shell siempre con LF (obligatorio para Linux/Docker)
+*.sh text eol=lf
+
+# Dockerfiles y configs de contenedor siempre con LF
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+.dockerignore text eol=lf
+entrypoint* text eol=lf
