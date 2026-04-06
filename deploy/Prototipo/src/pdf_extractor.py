@@ -1,17 +1,20 @@
-"""Extraccion de texto de documentos PDF usando PyMuPDF."""
+"""Extraccion de texto de documentos PDF usando LiteParse."""
 import re
-import fitz  # PyMuPDF
 from pathlib import Path
 from typing import Dict, List, Any
 from urllib.parse import unquote
+
+from liteparse import LiteParse
 
 
 def clean_text(raw_text: str) -> str:
     """Limpia texto extraido de PDF: normaliza espacios, encoding, etc."""
     text = raw_text
+    # Colapsar espacios horizontales consecutivos (layout espacial de LiteParse)
+    text = re.sub(r"[ \t]{2,}", " ", text)
     # Normalizar saltos de linea multiples
     text = re.sub(r"\n{3,}", "\n\n", text)
-    # Eliminar espacios multiples (pero no saltos de linea)
+    # Eliminar espacios multiples restantes (pero no saltos de linea)
     text = re.sub(r"[^\S\n]+", " ", text)
     # Eliminar lineas que solo tienen numeros (paginacion)
     text = re.sub(r"^\s*\d+\s*$", "", text, flags=re.MULTILINE)
@@ -31,28 +34,41 @@ def clean_filename(filename: str) -> str:
     return name
 
 
+def _get_parsed_text(result: object) -> str:
+    """Extrae texto del resultado de LiteParse de forma defensiva."""
+    for attr in ("text", "content", "markdown"):
+        if hasattr(result, attr):
+            value = getattr(result, attr)
+            if isinstance(value, str) and value.strip():
+                return value
+    return str(result)
+
+
 def extract_text_from_pdf(pdf_path: Path) -> Dict[str, Any]:
     """
-    Extrae todo el texto de un archivo PDF.
+    Extrae todo el texto de un archivo PDF usando LiteParse.
 
     Returns:
         Diccionario con filename, title, num_pages, full_text, pages.
     """
-    doc = fitz.open(str(pdf_path))
+    parser = LiteParse()
+    result = parser.parse(str(pdf_path))
+    raw_text = _get_parsed_text(result)
+
+    # LiteParse separa paginas con form-feed (\f)
+    raw_pages = raw_text.split("\f") if "\f" in raw_text else [raw_text]
+
     pages = []
     full_text_parts = []
-
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        text = page.get_text("text")
-        cleaned = clean_text(text)
+    for page_num, page_text in enumerate(raw_pages, start=1):
+        cleaned = clean_text(page_text)
+        if not cleaned:
+            continue
         pages.append({
-            "page_number": page_num + 1,
+            "page_number": page_num,
             "text": cleaned,
         })
         full_text_parts.append(cleaned)
-
-    doc.close()
 
     filename = pdf_path.name
     full_text = "\n\n".join(full_text_parts)

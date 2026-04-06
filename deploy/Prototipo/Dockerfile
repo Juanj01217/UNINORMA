@@ -2,8 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# curl para health checks en el entrypoint
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# curl (health checks) + Node.js 20 (requerido por LiteParse en runtime)
+RUN apt-get update && \
+    apt-get install -y curl gnupg && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # Instalar dependencias Python y pre-descargar modelo de embeddings
 COPY Prototipo/requirements.txt .
