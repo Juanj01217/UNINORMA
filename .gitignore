@@ -2,7 +2,6 @@
 \venv
 __pycache__
 .env
-/deploy/WebScraping/reglamentos
 
 # Prototipo - datos y resultados locales
 /deploy/Prototipo/data/raw/
@@ -11,3 +10,4 @@ __pycache__
 /deploy/Prototipo/benchmark/results/
 
 /.claude
+/deploy/WebScraping/.ipynb_checkpoints

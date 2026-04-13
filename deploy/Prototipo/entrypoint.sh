@@ -60,7 +60,7 @@ echo ""
 echo "[3/3] Verificando base de datos vectorial (ChromaDB)..."
 if [ ! -d "/app/data/chroma_db" ] || [ -z "$(ls -A /app/data/chroma_db 2>/dev/null)" ]; then
     echo "  ChromaDB no encontrada. Ejecutando ingestión de datos..."
-    python3 ingest.py
+    python3 ingest.py --pdf-dir /reglamentos
     echo "  Ingestión completada."
 else
     echo "[3/3] ChromaDB encontrada y lista."
