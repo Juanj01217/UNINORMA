@@ -58,6 +58,14 @@ def _init_retriever():
     return _retriever
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Inicializa el vector store al arrancar para que /health reporte correctamente."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _init_retriever)
+
+
 def _init_chain(model_name: str = DEFAULT_SLM_MODEL):
     global _current_chain, _current_model
     if _current_chain is None or _current_model != model_name:
@@ -69,9 +77,14 @@ def _init_chain(model_name: str = DEFAULT_SLM_MODEL):
 
 # --- Schemas ---
 
+class HistoryMessage(BaseModel):
+    role: str   # "user" | "assistant"
+    content: str
+
 class QueryRequest(BaseModel):
     question: str
     model: str = DEFAULT_SLM_MODEL
+    history: list[HistoryMessage] = []
 
 class SourceInfo(BaseModel):
     source: str
@@ -114,8 +127,9 @@ def list_models():
     if not check_ollama_running():
         raise HTTPException(status_code=503, detail=_OLLAMA_NO_ACTIVO)
     available = get_available_models()
+    installed_models = [m for m in SLM_MODELS if available.get(m, False)]
     return {
-        "models": SLM_MODELS,
+        "models": installed_models,
         "installed": {m: v for m, v in available.items() if v},
         "active": _current_model,
         "default": DEFAULT_SLM_MODEL,
@@ -154,7 +168,8 @@ def query(body: QueryRequest):
 
     try:
         chain = _init_chain(body.model)
-        result = query_rag(chain, body.question, body.model)
+        history_dicts = [{"role": h.role, "content": h.content} for h in body.history]
+        result = query_rag(chain, body.question, body.model, history=history_dicts)
         sources = [
             SourceInfo(
                 source=s.get("source", ""),

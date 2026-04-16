@@ -95,7 +95,13 @@ export default function HomePage() {
     setMessages((prev) => [...prev, userMsg, loadingMsg]);
 
     try {
-      const result = await sendQuery(text, selectedModel);
+      // Construir historial con los ultimos 3 exchanges completados (6 mensajes max)
+      const completedMsgs = messages.filter((m) => !m.loading && m.content);
+      const historyToSend = completedMsgs.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+      const result = await sendQuery(text, selectedModel, historyToSend);
       setMessages((prev) =>
         prev.map((m) =>
           m.id === loadingMsg.id

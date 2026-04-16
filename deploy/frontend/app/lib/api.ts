@@ -141,12 +141,13 @@ export async function getBenchmarkResults(): Promise<{ runs: BenchmarkRun[] }> {
 
 export async function sendQuery(
   question: string,
-  model: string
+  model: string,
+  history: Array<{ role: string; content: string }> = []
 ): Promise<QueryResponse> {
   const res = await fetch(`${API_URL}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, model }),
+    body: JSON.stringify({ question, model, history }),
   });
   if (!res.ok) {
     let message = "Error al procesar la consulta";
