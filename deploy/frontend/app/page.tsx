@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import ChatMessage, { Message } from "./components/ChatMessage";
 import ModelSelector from "./components/ModelSelector";
@@ -139,12 +140,24 @@ export default function HomePage() {
                 Universidad del Norte · Consulta en lenguaje natural
               </p>
             </div>
-            <ModelSelector
+            <div className="flex items-center gap-3">
+              <Link
+                href="/benchmark"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Benchmark
+              </Link>
+              <ModelSelector
               models={models}
               selected={selectedModel}
               onSelect={handleModelChange}
               loading={modelLoading}
             />
+            </div>
           </div>
           <StatusBar status={status} loading={statusLoading} />
         </div>
