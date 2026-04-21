@@ -48,7 +48,7 @@ _STOPWORDS_ES = {
     # Verbos conversacionales: no aparecen en documentos normativos y
     # alejan el embedding del retrieval query del espacio de los reglamentos.
     "hablame", "cuentame", "dime", "quiero", "busco", "consigo",
-    "obtengo", "necesitas", "podrias", "podrias",
+    "obtengo", "necesitas", "podrias",
 }
 
 # Palabras que aparecen en casi todos los chunks normativos — no sirven como
@@ -196,6 +196,8 @@ def _context_covers(question: str, docs: list) -> bool:
     return any(_token_in_text(t, context_text) for t in terms)
 
 
+_NON_NORMATIVE_KW = ("informe", "sostenibilidad", "sustainability", "memoria")
+
 _ACRONYM_RE = re.compile(r"\b[A-ZÁÉÍÓÚ]{3,}\b")
 _ALLOWED_ACRONYMS = {"UNINORTE", "PDF", "DNI", "NRC", "TIC", "GPS", "URL", "API", "ID"}
 
@@ -249,6 +251,20 @@ class RAGChain:
     def _format_docs(docs: List[Document]) -> str:
         """Formatea documentos recuperados en un string de contexto."""
         return format_context_from_docs(docs)
+
+    @staticmethod
+    def _filter_and_dedup(docs: List[Document], seen: set) -> List[Document]:
+        result = []
+        for doc in docs:
+            title = doc.metadata.get("title", "").lower()
+            source = doc.metadata.get("source", "").lower()
+            if any(kw in title or kw in source for kw in _NON_NORMATIVE_KW):
+                continue
+            fingerprint = doc.page_content[:120].strip()
+            if fingerprint not in seen:
+                seen.add(fingerprint)
+                result.append(doc)
+        return result
 
     def _keyword_search_fallback(self, terms: set, n: int = 3) -> List[Document]:
         """
@@ -331,41 +347,15 @@ class RAGChain:
         retrieval_query = " ".join(terms) if terms else question
         source_docs = self.retriever.invoke(retrieval_query)
         seen_fingerprints: set = set()
-        unique_docs = []
-        for doc in source_docs:
-            # Excluir documentos no normativos (informes, memorias) que generan
-            # hallucinations: el LLM los usa como "evidencia" de conceptos que no
-            # existen en la normativa formal de Uninorte.
-            title = doc.metadata.get("title", "").lower()
-            source = doc.metadata.get("source", "").lower()
-            if any(kw in title or kw in source for kw in ("informe", "sostenibilidad", "sustainability", "memoria")):
-                continue
-            fingerprint = doc.page_content[:120].strip()
-            if fingerprint not in seen_fingerprints:
-                seen_fingerprints.add(fingerprint)
-                unique_docs.append(doc)
+        unique_docs = self._filter_and_dedup(source_docs, seen_fingerprints)
 
-        # Verificacion de cobertura: si los chunks no contienen los terminos clave
-        # de la pregunta, es un mismatch semantico (ej. "cortes" en sancion != "cortes" academicos).
-        # Fallback: busqueda por keyword para encontrar chunks que mencionen literalmente
-        # el termino — la busqueda vectorial a veces trae chunks de introduccion que son
-        # semanticamente cercanos pero no contienen el concepto especifico de la pregunta.
         needs_fallback = (
             (unique_docs and not _context_covers(question, unique_docs))
             or (not unique_docs and bool(terms))
         )
         if needs_fallback:
             fallback = self._keyword_search_fallback(terms)
-            unique_docs = []
-            for doc in fallback:
-                title = doc.metadata.get("title", "").lower()
-                source = doc.metadata.get("source", "").lower()
-                if any(kw in title or kw in source for kw in ("informe", "sostenibilidad", "sustainability", "memoria")):
-                    continue
-                fingerprint = doc.page_content[:120].strip()
-                if fingerprint not in seen_fingerprints:
-                    seen_fingerprints.add(fingerprint)
-                    unique_docs.append(doc)
+            unique_docs = self._filter_and_dedup(fallback, seen_fingerprints)
 
         context = self._format_docs(unique_docs)
         history_text = format_history_for_prompt(history, current_question=question)

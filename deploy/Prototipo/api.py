@@ -294,6 +294,63 @@ def _save_benchmark_to_disk(results: list, summary: dict) -> None:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
 
+def _sample_questions_quick(questions: list) -> list:
+    seen: set = set()
+    sampled = []
+    for q in questions:
+        cat = q.get("category", "")
+        if cat not in seen:
+            seen.add(cat)
+            sampled.append(q)
+        if len(sampled) >= 6:
+            break
+    return sampled
+
+
+def _eval_one_question(chain, q: dict, model_name: str, raw_sentence_model, metrics) -> dict:
+    mem_before = metrics["get_memory_usage_mb"]()
+    try:
+        rag_result, latency = metrics["measure_latency"](
+            metrics["query_rag"], chain, q["question"], model_name
+        )
+        mem_after = metrics["get_memory_usage_mb"]()
+        answer = rag_result["answer"]
+        source_docs = rag_result.get("source_documents", [])
+        retrieved_sources = [doc.metadata.get("source", "") for doc in source_docs]
+        context = "\n".join(doc.page_content for doc in source_docs)
+        return {
+            "question_id": q["id"],
+            "model_name": model_name,
+            "question": q["question"],
+            "answer": answer,
+            "category": q.get("category", ""),
+            "difficulty": q.get("difficulty", ""),
+            "latency_seconds": round(latency, 3),
+            "memory_usage_mb": round(max(0.0, mem_after - mem_before), 2),
+            "retrieval_hit": metrics["check_retrieval_hit"](retrieved_sources, q["expected_source"]),
+            "answer_relevancy": round(metrics["compute_answer_relevancy"](q["question"], answer, raw_sentence_model), 3),
+            "faithfulness": round(metrics["compute_faithfulness"](answer, context), 3),
+            "hallucination_detected": metrics["detect_hallucination"](answer, context),
+            "no_answer_correct": metrics["check_no_answer_correct"](answer, q["expected_source"]),
+        }
+    except Exception as exc:
+        return {
+            "question_id": q["id"],
+            "model_name": model_name,
+            "question": q["question"],
+            "answer": f"ERROR: {exc}",
+            "category": q.get("category", ""),
+            "difficulty": q.get("difficulty", ""),
+            "latency_seconds": -1,
+            "memory_usage_mb": 0.0,
+            "retrieval_hit": False,
+            "answer_relevancy": 0.0,
+            "faithfulness": 0.0,
+            "hallucination_detected": False,
+            "no_answer_correct": False,
+        }
+
+
 def _run_benchmark_thread(job_id: str, models: list, quick: bool) -> None:
     """Ejecuta el benchmark en un hilo separado y actualiza el job en memoria."""
     job = _benchmark_jobs[job_id]
@@ -304,106 +361,42 @@ def _run_benchmark_thread(job_id: str, models: list, quick: bool) -> None:
         from src.rag_chain import create_rag_chain, query_rag
         from src.vector_store import get_retriever, load_vector_store
         from benchmark.metrics import (
-            check_no_answer_correct,
-            check_retrieval_hit,
-            compute_answer_relevancy,
-            compute_faithfulness,
-            detect_hallucination,
-            get_memory_usage_mb,
-            measure_latency,
+            check_no_answer_correct, check_retrieval_hit,
+            compute_answer_relevancy, compute_faithfulness,
+            detect_hallucination, get_memory_usage_mb, measure_latency,
         )
 
-        # Cargar preguntas
         questions_path = Path(__file__).parent / "benchmark" / "test_questions.json"
         with open(questions_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        questions: list = data["questions"]
+            questions: list = json.load(f)["questions"]
 
         if quick:
-            # Seleccionar 1 pregunta por categoría (máx. 6)
-            seen: set = set()
-            sampled = []
-            for q in questions:
-                cat = q.get("category", "")
-                if cat not in seen:
-                    seen.add(cat)
-                    sampled.append(q)
-                if len(sampled) >= 6:
-                    break
-            questions = sampled
+            questions = _sample_questions_quick(questions)
 
-        total = len(questions) * len(models)
-        job["total_questions"] = total
+        job["total_questions"] = len(questions) * len(models)
 
-        # Componentes compartidos
         emb_model_obj = get_embedding_model(DEFAULT_EMBEDDING_MODEL)
         vector_store = load_vector_store(emb_model_obj)
         retriever = get_retriever(vector_store)
         raw_sentence_model = SentenceTransformer(EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL])
 
-        all_results: list = []
+        metrics = {
+            "query_rag": query_rag,
+            "measure_latency": measure_latency,
+            "get_memory_usage_mb": get_memory_usage_mb,
+            "check_retrieval_hit": check_retrieval_hit,
+            "compute_answer_relevancy": compute_answer_relevancy,
+            "compute_faithfulness": compute_faithfulness,
+            "detect_hallucination": detect_hallucination,
+            "check_no_answer_correct": check_no_answer_correct,
+        }
 
+        all_results: list = []
         for model_name in models:
             job["current_model"] = model_name
             chain = create_rag_chain(retriever, model_name)
-
             for q in questions:
-                mem_before = get_memory_usage_mb()
-                try:
-                    rag_result, latency = measure_latency(
-                        query_rag, chain, q["question"], model_name
-                    )
-                    mem_after = get_memory_usage_mb()
-                    answer = rag_result["answer"]
-                    source_docs = rag_result.get("source_documents", [])
-                    retrieved_sources = [
-                        doc.metadata.get("source", "") for doc in source_docs
-                    ]
-                    context = "\n".join(doc.page_content for doc in source_docs)
-
-                    result = {
-                        "question_id": q["id"],
-                        "model_name": model_name,
-                        "question": q["question"],
-                        "answer": answer,
-                        "category": q.get("category", ""),
-                        "difficulty": q.get("difficulty", ""),
-                        "latency_seconds": round(latency, 3),
-                        "memory_usage_mb": round(max(0.0, mem_after - mem_before), 2),
-                        "retrieval_hit": check_retrieval_hit(
-                            retrieved_sources, q["expected_source"]
-                        ),
-                        "answer_relevancy": round(
-                            compute_answer_relevancy(
-                                q["question"], answer, raw_sentence_model
-                            ),
-                            3,
-                        ),
-                        "faithfulness": round(
-                            compute_faithfulness(answer, context), 3
-                        ),
-                        "hallucination_detected": detect_hallucination(answer, context),
-                        "no_answer_correct": check_no_answer_correct(
-                            answer, q["expected_source"]
-                        ),
-                    }
-                except Exception as exc:
-                    result = {
-                        "question_id": q["id"],
-                        "model_name": model_name,
-                        "question": q["question"],
-                        "answer": f"ERROR: {exc}",
-                        "category": q.get("category", ""),
-                        "difficulty": q.get("difficulty", ""),
-                        "latency_seconds": -1,
-                        "memory_usage_mb": 0.0,
-                        "retrieval_hit": False,
-                        "answer_relevancy": 0.0,
-                        "faithfulness": 0.0,
-                        "hallucination_detected": False,
-                        "no_answer_correct": False,
-                    }
-
+                result = _eval_one_question(chain, q, model_name, raw_sentence_model, metrics)
                 all_results.append(result)
                 job["completed_questions"] += 1
                 job["results"] = all_results
@@ -418,7 +411,9 @@ def _run_benchmark_thread(job_id: str, models: list, quick: bool) -> None:
         job["error"] = str(exc)
 
 
-@app.post("/benchmark/start")
+@app.post("/benchmark/start", responses={
+    400: {"description": "Modelos no reconocidos o lista vacia."},
+})
 def benchmark_start(body: BenchmarkStartRequest):
     """Inicia un benchmark en background y devuelve el job_id para hacer polling."""
     invalid = [m for m in body.models if m not in SLM_MODELS]
@@ -453,7 +448,9 @@ def benchmark_start(body: BenchmarkStartRequest):
     return {"job_id": job_id}
 
 
-@app.get("/benchmark/progress/{job_id}")
+@app.get("/benchmark/progress/{job_id}", responses={
+    404: {"description": "Job no encontrado."},
+})
 def benchmark_progress(job_id: str):
     """Retorna el estado y progreso de un job de benchmark (para polling)."""
     if job_id not in _benchmark_jobs:

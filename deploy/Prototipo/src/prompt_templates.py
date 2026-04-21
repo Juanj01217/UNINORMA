@@ -116,30 +116,19 @@ def _simple_key_terms(text: str) -> set:
     return {w for w in words if len(w) >= 5 and w not in _STOPWORDS_LOCAL}
 
 
-def format_history_for_prompt(history: list, current_question: str = "") -> str:
-    """
-    Convierte el historial en texto para incluir en el prompt.
+def _topic_changed(current_question: str, history: list) -> bool:
+    """True si la pregunta actual no comparte terminos con el historial previo."""
+    cur_terms = _simple_key_terms(current_question)
+    if not cur_terms:
+        return False
+    prior_terms: set = set()
+    for m in history:
+        if m.get("role") == "user":
+            prior_terms |= _simple_key_terms(m.get("content", ""))
+    return not (cur_terms & prior_terms)
 
-    Procesa los mensajes en pares (usuario, asistente). Si el asistente
-    respondio 'No encontre informacion', se omite el par completo.
-    Si la pregunta actual no comparte terminos con ninguna pregunta previa
-    (cambio de tema), se omite el historial completo para evitar contaminacion.
-    """
-    if not history:
-        return ""
 
-    # Cambio de tema: si no hay solapamiento de terminos entre la pregunta actual
-    # y todas las preguntas previas del usuario, el historial no aporta contexto.
-    if current_question:
-        cur_terms = _simple_key_terms(current_question)
-        if cur_terms:
-            prior_terms: set = set()
-            for m in history:
-                if m.get("role") == "user":
-                    prior_terms |= _simple_key_terms(m.get("content", ""))
-            if not (cur_terms & prior_terms):
-                return ""
-
+def _collect_history_lines(history: list) -> list:
     lines = []
     i = 0
     while i < len(history):
@@ -151,7 +140,22 @@ def format_history_for_prompt(history: list, current_question: str = "") -> str:
         if line:
             lines.append(line)
         i += step
+    return lines
 
+
+def format_history_for_prompt(history: list, current_question: str = "") -> str:
+    """
+    Convierte el historial en texto para incluir en el prompt.
+
+    Omite pares donde el asistente respondio 'No encontre informacion'.
+    Omite el historial completo si la pregunta actual cambia de tema.
+    """
+    if not history:
+        return ""
+    if current_question and _topic_changed(current_question, history):
+        return ""
+
+    lines = _collect_history_lines(history)
     if not lines:
         return ""
     return "Contexto de la conversacion:\n" + "\n".join(lines) + "\n\n"

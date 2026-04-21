@@ -19,6 +19,7 @@ from urllib3.util.retry import Retry
 
 
 NORMATIVIDAD_URL = "https://www.uninorte.edu.co/web/sobre-nosotros/normatividad"
+_HTML_PARSER = "html.parser"
 BASE_URL = "https://www.uninorte.edu.co"
 
 # Sub-paginas conocidas que contienen PDFs adicionales
@@ -129,76 +130,63 @@ def _download_pdf(session: requests.Session, url: str, dest_dir: Path) -> Option
         return None
 
 
-def _extract_text_from_html(soup: BeautifulSoup, url: str) -> str:
+_CONTENT_SELECTORS = [
+    "div.journal-content-article", "div.c_cr", "div.web-content-display",
+    "article", "main", "div.portlet-body",
+]
+_BLOCK_TAGS = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "div", "td", "th", "blockquote"]
+_HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
+
+
+def _find_main_content(soup: BeautifulSoup):
+    for selector in _CONTENT_SELECTORS:
+        node = soup.select_one(selector)
+        if node and len(node.get_text(strip=True)) > 100:
+            return node
+    body = soup.find("body")
+    if body:
+        for tag in body.find_all(["header", "footer", "nav", "script", "style"]):
+            tag.decompose()
+    return body
+
+
+def _format_element(element) -> str:
+    text = element.get_text(strip=True)
+    if not text or len(text) < 3:
+        return ""
+    if element.name in _HEADING_TAGS:
+        return f"\n\n## {text}\n"
+    if element.name == "li":
+        return f"  - {text}"
+    return f"\n{text}\n"
+
+
+def _extract_block_lines(content) -> list:
+    lines = []
+    processed: set = set()
+    _div_children = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "div", "table"]
+    for element in content.find_all(_BLOCK_TAGS):
+        if id(element) in processed:
+            continue
+        if element.name == "div" and element.find(_div_children):
+            continue
+        line = _format_element(element)
+        if line:
+            for child in element.find_all(True):
+                processed.add(id(child))
+            lines.append(line)
+    return lines
+
+
+def _extract_text_from_html(soup: BeautifulSoup) -> str:
     """Extrae texto limpio de una pagina HTML sin duplicar contenido."""
-    # Intentar encontrar el contenido principal
-    content = None
-
-    # Buscar en orden de prioridad los contenedores tipicos de Liferay/Uninorte
-    for selector in [
-        "div.journal-content-article",
-        "div.c_cr",
-        "div.web-content-display",
-        "article",
-        "main",
-        "div.portlet-body",
-    ]:
-        content = soup.select_one(selector)
-        if content and len(content.get_text(strip=True)) > 100:
-            break
-
-    if not content:
-        # Fallback: body sin header/footer/nav
-        content = soup.find("body")
-        if content:
-            for tag in content.find_all(["header", "footer", "nav", "script", "style"]):
-                tag.decompose()
-
+    content = _find_main_content(soup)
     if not content:
         return ""
-
-    # Eliminar scripts, estilos, y elementos de navegacion
     for tag in content.find_all(["script", "style", "nav", "iframe"]):
         tag.decompose()
-
-    # Extraer texto usando solo elementos de bloque (evita duplicacion)
-    lines = []
-    processed_elements = set()
-
-    for element in content.find_all(
-        ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "div", "td", "th", "blockquote"]
-    ):
-        # Evitar procesar elementos ya contenidos dentro de otros procesados
-        if id(element) in processed_elements:
-            continue
-
-        # No procesar divs que contengan sub-elementos de bloque
-        if element.name == "div":
-            has_block_children = element.find(
-                ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "div", "table"]
-            )
-            if has_block_children:
-                continue
-
-        text = element.get_text(strip=True)
-        if not text or len(text) < 3:
-            continue
-
-        # Marcar elementos hijos como ya procesados
-        for child in element.find_all(True):
-            processed_elements.add(id(child))
-
-        if element.name in ("h1", "h2", "h3", "h4", "h5", "h6"):
-            lines.append(f"\n\n## {text}\n")
-        elif element.name == "li":
-            lines.append(f"  - {text}")
-        else:
-            lines.append(f"\n{text}\n")
-
-    text = "\n".join(lines)
-    # Limpiar exceso de lineas vacias
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    text = "\n".join(_extract_block_lines(content))
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def _make_document_from_html(
@@ -232,46 +220,99 @@ def _make_document_from_html(
     }
 
 
+_GENERIC_LINK_TEXTS = {"Ver más", "ver más", "Ver mas", "Descargar", "Aquí", "aquí", ""}
+
+
+def _title_from_parent_context(parent, generic: set) -> str:
+    """Busca titulo en hermanos previos o texto directo del padre."""
+    for sibling in parent.previous_siblings:
+        if isinstance(sibling, Tag):
+            sib_text = sibling.get_text(strip=True)
+            if sib_text and len(sib_text) > 3 and sib_text not in generic:
+                return sib_text[:100]
+        elif isinstance(sibling, str) and sibling.strip():
+            return sibling.strip()[:100]
+    for child in parent.children:
+        if isinstance(child, str) and child.strip() and child.strip() not in generic:
+            return child.strip()[:100]
+    return ""
+
+
 def _extract_title(link_tag, href: str) -> str:
     """Extrae un titulo significativo del enlace o su contexto."""
-    from urllib.parse import urlparse
+    from urllib.parse import urlparse, unquote as _unquote
 
-    # 1. Revisar mapeo conocido de URLs
     path = urlparse(href).path if href.startswith("http") else href
     if path in URL_TITLE_MAP:
         return URL_TITLE_MAP[path]
 
-    # 2. Texto del enlace (si no es generico)
     text = link_tag.get_text(strip=True)
-    generic = {"Ver más", "ver más", "Ver mas", "Descargar", "Aquí", "aquí", ""}
-    if text and text not in generic:
+    if text and text not in _GENERIC_LINK_TEXTS:
         return text
 
-    # 3. Buscar titulo en elemento padre o hermano anterior
     parent = link_tag.parent
     if parent:
-        # Buscar headings o textos descriptivos en hermanos previos
-        for sibling in parent.previous_siblings:
-            if isinstance(sibling, Tag):
-                sib_text = sibling.get_text(strip=True)
-                if sib_text and len(sib_text) > 3 and sib_text not in generic:
-                    return sib_text[:100]
-            elif isinstance(sibling, str) and sibling.strip():
-                return sibling.strip()[:100]
-        # Buscar en el texto directo del padre
-        for child in parent.children:
-            if isinstance(child, str) and child.strip() and child.strip() not in generic:
-                return child.strip()[:100]
+        ctx = _title_from_parent_context(parent, _GENERIC_LINK_TEXTS)
+        if ctx:
+            return ctx
 
-    # 4. Extraer del nombre del archivo en la URL
     filename = href.split("/")[-1]
     if filename.endswith(".pdf"):
-        from urllib.parse import unquote
-        name = unquote(filename).replace(".pdf", "").replace("_", " ").replace("%20", " ")
+        name = _unquote(filename).replace(".pdf", "").replace("_", " ").replace("%20", " ")
         return re.sub(r"\s+", " ", name).strip()
 
-    # 5. Fallback
     return path.strip("/").split("/")[-1].replace("-", " ").replace("_", " ").title() or "Sin titulo"
+
+
+def _collect_main_links(main_content) -> tuple:
+    seen_urls: set = set()
+    items = []
+    for link in main_content.find_all("a", href=True):
+        href = link["href"].strip()
+        url = _normalize_url(href)
+        normalized = unquote(url).replace(" ", "_").lower()
+        if url in seen_urls or normalized in seen_urls:
+            continue
+        seen_urls.add(url)
+        seen_urls.add(normalized)
+        items.append({"title": _extract_title(link, href), "url": url, "href": href, "type": _classify_link(href)})
+    return items, seen_urls
+
+
+def _collect_footer_links(footer_content, seen_urls: set) -> list:
+    items = []
+    if not footer_content:
+        return items
+    for link in footer_content.find_all("a", href=True):
+        href = link["href"].strip()
+        if ".pdf" not in href:
+            continue
+        url = _normalize_url(href)
+        if url not in seen_urls:
+            seen_urls.add(url)
+            items.append({"title": link.get_text(strip=True) or "Sin titulo", "url": url, "href": href, "type": "pdf"})
+    return items
+
+
+def _dispatch_link(session: requests.Session, item: dict, pdf_dest_dir: Path, results: dict) -> None:
+    title, url, link_type = item["title"], item["url"], item["type"]
+    if link_type == "pdf":
+        print(f"  [PDF] {title}")
+        path = _download_pdf(session, url, pdf_dest_dir)
+        if path:
+            print(f"    -> Descargado: {path.name}")
+            results["pdfs_downloaded"] += 1
+        time.sleep(0.5)
+    elif link_type == "subpage":
+        print(f"  [SUB-PAGINA] {title} -> {url}")
+        _process_subpage(session, url, title, pdf_dest_dir, results)
+        time.sleep(1)
+    elif link_type == "webcontent":
+        print(f"  [WEB] {title} -> {url}")
+        _process_web_content(session, url, title, results)
+        time.sleep(1)
+    elif link_type == "skip":
+        print(f"  [SKIP] {title} (contenido embebido/interactivo)")
 
 
 def scrape_normatividad(
@@ -291,12 +332,7 @@ def scrape_normatividad(
         session = _create_session()
 
     pdf_dest_dir.mkdir(parents=True, exist_ok=True)
-
-    results = {
-        "pdfs_downloaded": 0,
-        "web_documents": [],
-        "errors": [],
-    }
+    results = {"pdfs_downloaded": 0, "web_documents": [], "errors": []}
 
     print(f"  Descargando pagina principal: {NORMATIVIDAD_URL}")
     try:
@@ -306,88 +342,19 @@ def scrape_normatividad(
         results["errors"].append(f"No se pudo acceder a la pagina principal: {e}")
         return results
 
-    soup = BeautifulSoup(page.text, "html.parser")
-
-    # Buscar el contenedor principal de enlaces
-    main_content = soup.find("div", class_="c_cr")
-    if not main_content:
-        # Intentar otro selector
-        main_content = soup.find("div", class_="journal-content-article")
+    soup = BeautifulSoup(page.text, _HTML_PARSER)
+    main_content = soup.find("div", class_="c_cr") or soup.find("div", class_="journal-content-article")
     if not main_content:
         results["errors"].append("No se encontro el contenedor principal de enlaces")
         return results
 
-    # Recolectar todos los enlaces unicos (normalizar URLs para evitar duplicados)
-    seen_urls = set()
-    links_to_process = []
-
-    for link in main_content.find_all("a", href=True):
-        href = link["href"].strip()
-        url = _normalize_url(href)
-
-        # Normalizar: decodificar URL para detectar duplicados como
-        # "Reg_profesor_%20junio_2021.pdf" y "Reg_profesor_ junio_2021.pdf"
-        normalized_url = unquote(url).replace(" ", "_").lower()
-        if url in seen_urls or normalized_url in seen_urls:
-            continue
-        seen_urls.add(url)
-        seen_urls.add(normalized_url)
-
-        title = _extract_title(link, href)
-        link_type = _classify_link(href)
-
-        links_to_process.append({
-            "title": title,
-            "url": url,
-            "href": href,
-            "type": link_type,
-        })
-
-    # Tambien buscar enlaces en el footer/pie de pagina legal
-    footer_content = soup.find("footer") or soup.find("div", class_="footer")
-    if footer_content:
-        for link in footer_content.find_all("a", href=True):
-            href = link["href"].strip()
-            if ".pdf" in href:
-                url = _normalize_url(href)
-                if url not in seen_urls:
-                    seen_urls.add(url)
-                    title = link.get_text(strip=True) or "Sin titulo"
-                    links_to_process.append({
-                        "title": title,
-                        "url": url,
-                        "href": href,
-                        "type": "pdf",
-                    })
+    links_to_process, seen_urls = _collect_main_links(main_content)
+    footer = soup.find("footer") or soup.find("div", class_="footer")
+    links_to_process += _collect_footer_links(footer, seen_urls)
 
     print(f"  Encontrados {len(links_to_process)} enlaces en la pagina principal")
-
-    # Procesar cada enlace segun su tipo
     for item in links_to_process:
-        title = item["title"]
-        url = item["url"]
-        link_type = item["type"]
-
-        if link_type == "pdf":
-            print(f"  [PDF] {title}")
-            path = _download_pdf(session, url, pdf_dest_dir)
-            if path:
-                print(f"    -> Descargado: {path.name}")
-                results["pdfs_downloaded"] += 1
-            time.sleep(0.5)
-
-        elif link_type == "subpage":
-            print(f"  [SUB-PAGINA] {title} -> {url}")
-            _process_subpage(session, url, title, pdf_dest_dir, results)
-            time.sleep(1)
-
-        elif link_type == "webcontent":
-            print(f"  [WEB] {title} -> {url}")
-            _process_web_content(session, url, title, results)
-            time.sleep(1)
-
-        elif link_type == "skip":
-            print(f"  [SKIP] {title} (contenido embebido/interactivo)")
+        _dispatch_link(session, item, pdf_dest_dir, results)
 
     return results
 
@@ -407,7 +374,7 @@ def _process_subpage(
         results["errors"].append(f"Error accediendo sub-pagina {url}: {e}")
         return
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(resp.text, _HTML_PARSER)
 
     # Mejorar titulo si es generico
     page_title = _get_page_title(soup, url, parent_title)
@@ -431,14 +398,14 @@ def _process_subpage(
             time.sleep(0.5)
 
     # Tambien extraer texto de la propia pagina (puede tener info util)
-    page_text = _extract_text_from_html(soup, url)
+    page_text = _extract_text_from_html(soup)
     if page_text and len(page_text) > 200:
         doc = _make_document_from_html(page_title, page_text, url)
         results["web_documents"].append(doc)
         print(f"    -> Texto web ({page_title}): {len(page_text)} caracteres")
 
     if pdf_count == 0 and not page_text:
-        print(f"    -> Sin contenido extraible")
+        print("    -> Sin contenido extraible")
 
 
 def _get_page_title(soup: BeautifulSoup, url: str, fallback: str) -> str:
@@ -485,11 +452,11 @@ def _process_web_content(
         results["errors"].append(f"Error accediendo pagina web {url}: {e}")
         return
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(resp.text, _HTML_PARSER)
 
     # Mejorar titulo si es generico
     page_title = _get_page_title(soup, url, title)
-    text = _extract_text_from_html(soup, url)
+    text = _extract_text_from_html(soup)
 
     if text and len(text) > 100:
         doc = _make_document_from_html(page_title, text, url)

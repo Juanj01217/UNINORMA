@@ -185,7 +185,7 @@ def build_ui() -> gr.Blocks:
 
                 gr.Markdown("### Preguntas de ejemplo")
                 for question in EXAMPLE_QUESTIONS:
-                    btn = gr.Button(
+                    gr.Button(
                         question[:50] + ("..." if len(question) > 50 else ""),
                         size="sm",
                     )
