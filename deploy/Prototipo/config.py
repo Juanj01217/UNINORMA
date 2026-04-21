@@ -27,6 +27,7 @@ DEFAULT_EMBEDDING_MODEL = "minilm-multilingual"
 # === Configuracion de Ollama ===
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 SLM_MODELS = [
+    "llama3.1:8b",
     "qwen2.5:1.5b",
     "qwen2.5:3b",
     "llama3.2:1b",
@@ -35,7 +36,7 @@ SLM_MODELS = [
     "mistral:7b",
     "gemma3:1b",
 ]
-DEFAULT_SLM_MODEL = "qwen2.5:1.5b"
+DEFAULT_SLM_MODEL = "llama3.1:8b"
 
 # === Parametros de Recuperacion ===
 RETRIEVAL_TOP_K = 6

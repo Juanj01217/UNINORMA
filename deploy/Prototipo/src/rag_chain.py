@@ -178,22 +178,24 @@ def _token_in_text(term: str, text: str) -> bool:
     return bool(re.search(pattern, text))
 
 
-def _context_covers(question: str, docs: list) -> bool:
+def _context_covers(question: str, docs: list, threshold: float = 0.35) -> bool:
     """
-    Verifica que al menos un termino clave de la pregunta aparezca en los chunks.
+    Verifica que al menos el `threshold` (35%) de los terminos clave de la pregunta
+    aparezcan en los chunks recuperados.
 
     Reglas:
     - 0 terminos + pregunta corta (≤ 3 palabras): bloquear (saludos, comandos).
-    - 1+ terminos: al menos uno debe aparecer en el contexto recuperado.
-      Incluir el caso de 1 termino (antes era bypass) previene hallucinations
-      cuando el retriever devuelve chunks sin el termino clave de la pregunta
-      (ej. "carnet" en pregunta pero chunks de Res_Con_Aca que no lo mencionan).
+    - 1 termino: debe aparecer en el contexto (threshold no aplica por division).
+    - 2+ terminos: al menos el 35% debe aparecer para considerar que el contexto
+      es relevante. Esto evita que un solo termino generico coincida por casualidad
+      y envia la pregunta al fallback cuando el retrieval es semanticamente incorrecto.
     """
     terms = _key_terms(question)
     if len(terms) == 0:
         return len(question.strip().split()) > 3
     context_text = " ".join(doc.page_content.lower() for doc in docs)
-    return any(_token_in_text(t, context_text) for t in terms)
+    matched = sum(1 for t in terms if _token_in_text(t, context_text))
+    return (matched / len(terms)) >= threshold
 
 
 _NON_NORMATIVE_KW = ("informe", "sostenibilidad", "sustainability", "memoria")
@@ -236,6 +238,7 @@ def create_llm(
         temperature=temperature,
         num_predict=max_tokens,
         system=SYSTEM_PROMPT_ES,
+        repeat_penalty=1.15,
     )
 
 

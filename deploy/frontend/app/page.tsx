@@ -33,7 +33,7 @@ export default function HomePage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [models, setModels] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState("qwen2.5:1.5b");
+  const [selectedModel, setSelectedModel] = useState("llama3.1:8b");
   const [modelLoading, setModelLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
