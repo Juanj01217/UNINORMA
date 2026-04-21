@@ -33,6 +33,7 @@ SLM_MODELS = [
     "llama3.2:3b",
     "phi3:mini",
     "mistral:7b",
+    "gemma3:1b",
 ]
 DEFAULT_SLM_MODEL = "qwen2.5:3b"
 

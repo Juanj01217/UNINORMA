@@ -7,8 +7,12 @@ Uso:
     python api.py
     uvicorn api:app --reload --port 8000
 """
+import json
 import os
 import sys
+import threading
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +58,14 @@ def _init_retriever():
     return _retriever
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Inicializa el vector store al arrancar para que /health reporte correctamente."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _init_retriever)
+
+
 def _init_chain(model_name: str = DEFAULT_SLM_MODEL):
     global _current_chain, _current_model
     if _current_chain is None or _current_model != model_name:
@@ -65,9 +77,14 @@ def _init_chain(model_name: str = DEFAULT_SLM_MODEL):
 
 # --- Schemas ---
 
+class HistoryMessage(BaseModel):
+    role: str   # "user" | "assistant"
+    content: str
+
 class QueryRequest(BaseModel):
     question: str
     model: str = DEFAULT_SLM_MODEL
+    history: list[HistoryMessage] = []
 
 class SourceInfo(BaseModel):
     source: str
@@ -110,8 +127,9 @@ def list_models():
     if not check_ollama_running():
         raise HTTPException(status_code=503, detail=_OLLAMA_NO_ACTIVO)
     available = get_available_models()
+    installed_models = [m for m in SLM_MODELS if available.get(m, False)]
     return {
-        "models": SLM_MODELS,
+        "models": installed_models,
         "installed": {m: v for m, v in available.items() if v},
         "active": _current_model,
         "default": DEFAULT_SLM_MODEL,
@@ -150,7 +168,8 @@ def query(body: QueryRequest):
 
     try:
         chain = _init_chain(body.model)
-        result = query_rag(chain, body.question, body.model)
+        history_dicts = [{"role": h.role, "content": h.content} for h in body.history]
+        result = query_rag(chain, body.question, body.model, history=history_dicts)
         sources = [
             SourceInfo(
                 source=s.get("source", ""),
@@ -175,6 +194,253 @@ def query(body: QueryRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Benchmark
+# ---------------------------------------------------------------------------
+
+# Almacén en memoria de jobs de benchmark (clave: job_id)
+_benchmark_jobs: dict = {}
+
+
+class BenchmarkStartRequest(BaseModel):
+    models: list[str]
+    quick: bool = True  # True = 5 preguntas, False = todas (~40)
+
+
+def _compute_benchmark_summary(results: list) -> dict:
+    """Agrega métricas por modelo a partir de los resultados crudos."""
+    by_model: dict = {}
+    for r in results:
+        m = r["model_name"]
+        by_model.setdefault(m, []).append(r)
+
+    summary = {}
+    for model_name, mrs in by_model.items():
+        valid = [r for r in mrs if r["latency_seconds"] >= 0]
+        if not valid:
+            continue
+        summary[model_name] = {
+            "total_questions": len(mrs),
+            "successful": len(valid),
+            "avg_latency_seconds": round(
+                sum(r["latency_seconds"] for r in valid) / len(valid), 3
+            ),
+            "retrieval_accuracy": round(
+                sum(1 for r in valid if r["retrieval_hit"]) / len(valid), 3
+            ),
+            "avg_answer_relevancy": round(
+                sum(r["answer_relevancy"] for r in valid) / len(valid), 3
+            ),
+            "avg_faithfulness": round(
+                sum(r["faithfulness"] for r in valid) / len(valid), 3
+            ),
+            "hallucination_rate": round(
+                sum(1 for r in valid if r["hallucination_detected"]) / len(valid), 3
+            ),
+            "avg_memory_mb": round(
+                sum(r["memory_usage_mb"] for r in valid) / len(valid), 2
+            ),
+        }
+    return summary
+
+
+def _save_benchmark_to_disk(results: list, summary: dict) -> None:
+    output_dir = Path(__file__).parent / "benchmark" / "results"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    with open(output_dir / f"{ts}_summary.json", "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    with open(output_dir / f"{ts}_raw_results.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+
+
+def _run_benchmark_thread(job_id: str, models: list, quick: bool) -> None:
+    """Ejecuta el benchmark en un hilo separado y actualiza el job en memoria."""
+    job = _benchmark_jobs[job_id]
+    try:
+        from config import EMBEDDING_MODELS
+        from sentence_transformers import SentenceTransformer
+        from src.embeddings import get_embedding_model
+        from src.rag_chain import create_rag_chain, query_rag
+        from src.vector_store import get_retriever, load_vector_store
+        from benchmark.metrics import (
+            check_no_answer_correct,
+            check_retrieval_hit,
+            compute_answer_relevancy,
+            compute_faithfulness,
+            detect_hallucination,
+            get_memory_usage_mb,
+            measure_latency,
+        )
+
+        # Cargar preguntas
+        questions_path = Path(__file__).parent / "benchmark" / "test_questions.json"
+        with open(questions_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        questions: list = data["questions"]
+
+        if quick:
+            # Seleccionar 1 pregunta por categoría (máx. 6)
+            seen: set = set()
+            sampled = []
+            for q in questions:
+                cat = q.get("category", "")
+                if cat not in seen:
+                    seen.add(cat)
+                    sampled.append(q)
+                if len(sampled) >= 6:
+                    break
+            questions = sampled
+
+        total = len(questions) * len(models)
+        job["total_questions"] = total
+
+        # Componentes compartidos
+        emb_model_obj = get_embedding_model(DEFAULT_EMBEDDING_MODEL)
+        vector_store = load_vector_store(emb_model_obj)
+        retriever = get_retriever(vector_store)
+        raw_sentence_model = SentenceTransformer(EMBEDDING_MODELS[DEFAULT_EMBEDDING_MODEL])
+
+        all_results: list = []
+
+        for model_name in models:
+            job["current_model"] = model_name
+            chain = create_rag_chain(retriever, model_name)
+
+            for q in questions:
+                mem_before = get_memory_usage_mb()
+                try:
+                    rag_result, latency = measure_latency(
+                        query_rag, chain, q["question"], model_name
+                    )
+                    mem_after = get_memory_usage_mb()
+                    answer = rag_result["answer"]
+                    source_docs = rag_result.get("source_documents", [])
+                    retrieved_sources = [
+                        doc.metadata.get("source", "") for doc in source_docs
+                    ]
+                    context = "\n".join(doc.page_content for doc in source_docs)
+
+                    result = {
+                        "question_id": q["id"],
+                        "model_name": model_name,
+                        "question": q["question"],
+                        "answer": answer,
+                        "category": q.get("category", ""),
+                        "difficulty": q.get("difficulty", ""),
+                        "latency_seconds": round(latency, 3),
+                        "memory_usage_mb": round(max(0.0, mem_after - mem_before), 2),
+                        "retrieval_hit": check_retrieval_hit(
+                            retrieved_sources, q["expected_source"]
+                        ),
+                        "answer_relevancy": round(
+                            compute_answer_relevancy(
+                                q["question"], answer, raw_sentence_model
+                            ),
+                            3,
+                        ),
+                        "faithfulness": round(
+                            compute_faithfulness(answer, context), 3
+                        ),
+                        "hallucination_detected": detect_hallucination(answer, context),
+                        "no_answer_correct": check_no_answer_correct(
+                            answer, q["expected_source"]
+                        ),
+                    }
+                except Exception as exc:
+                    result = {
+                        "question_id": q["id"],
+                        "model_name": model_name,
+                        "question": q["question"],
+                        "answer": f"ERROR: {exc}",
+                        "category": q.get("category", ""),
+                        "difficulty": q.get("difficulty", ""),
+                        "latency_seconds": -1,
+                        "memory_usage_mb": 0.0,
+                        "retrieval_hit": False,
+                        "answer_relevancy": 0.0,
+                        "faithfulness": 0.0,
+                        "hallucination_detected": False,
+                        "no_answer_correct": False,
+                    }
+
+                all_results.append(result)
+                job["completed_questions"] += 1
+                job["results"] = all_results
+                job["summary"] = _compute_benchmark_summary(all_results)
+
+        job["status"] = "done"
+        job["current_model"] = None
+        _save_benchmark_to_disk(all_results, job["summary"])
+
+    except Exception as exc:
+        job["status"] = "error"
+        job["error"] = str(exc)
+
+
+@app.post("/benchmark/start")
+def benchmark_start(body: BenchmarkStartRequest):
+    """Inicia un benchmark en background y devuelve el job_id para hacer polling."""
+    invalid = [m for m in body.models if m not in SLM_MODELS]
+    if invalid:
+        raise HTTPException(
+            status_code=400, detail=f"Modelos no reconocidos: {invalid}"
+        )
+    if not body.models:
+        raise HTTPException(status_code=400, detail="Selecciona al menos un modelo.")
+
+    job_id = str(uuid.uuid4())[:8]
+    _benchmark_jobs[job_id] = {
+        "job_id": job_id,
+        "status": "running",
+        "started_at": datetime.now().isoformat(),
+        "models": body.models,
+        "quick": body.quick,
+        "total_questions": 0,
+        "completed_questions": 0,
+        "current_model": None,
+        "results": [],
+        "summary": {},
+        "error": None,
+    }
+
+    thread = threading.Thread(
+        target=_run_benchmark_thread,
+        args=(job_id, body.models, body.quick),
+        daemon=True,
+    )
+    thread.start()
+    return {"job_id": job_id}
+
+
+@app.get("/benchmark/progress/{job_id}")
+def benchmark_progress(job_id: str):
+    """Retorna el estado y progreso de un job de benchmark (para polling)."""
+    if job_id not in _benchmark_jobs:
+        raise HTTPException(status_code=404, detail="Job no encontrado.")
+    return _benchmark_jobs[job_id]
+
+
+@app.get("/benchmark/results")
+def benchmark_results():
+    """Retorna los últimos resultados guardados en disco (máx. 10 runs)."""
+    results_dir = Path(__file__).parent / "benchmark" / "results"
+    if not results_dir.exists():
+        return {"runs": []}
+
+    runs = []
+    for f in sorted(results_dir.glob("*_summary.json"), reverse=True)[:10]:
+        try:
+            with open(f, encoding="utf-8") as fp:
+                summary = json.load(fp)
+            timestamp_str = f.stem.replace("_summary", "")
+            runs.append({"timestamp": timestamp_str, "summary": summary})
+        except Exception:
+            pass
+
+    return {"runs": runs}
 
 
 if __name__ == "__main__":

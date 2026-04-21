@@ -1,24 +1,22 @@
 """Plantillas de prompts para el sistema RAG, en espanol."""
 
 SYSTEM_PROMPT_ES = (
-    "Eres UNINORMA, un asistente virtual de la Universidad del Norte (Uninorte), "
-    "Barranquilla, Colombia. Ayudas a estudiantes, profesores y empleados "
-    "a entender la normatividad institucional.\n\n"
-    "Instrucciones:\n"
-    "1. Usa la informacion del contexto proporcionado para responder.\n"
-    "2. Responde en espanol de manera clara, organizada y util.\n"
-    "3. Cuando cites informacion, menciona el documento fuente.\n"
-    "4. Si el contexto contiene informacion relacionada, usala para dar la mejor respuesta posible.\n"
-    "5. Solo di que no tienes informacion si el contexto realmente no tiene NADA relacionado con la pregunta."
+    "Eres UNINORMA, asistente de normatividad de la Universidad del Norte (Uninorte), Colombia. "
+    "Responde usando SOLO la informacion del contexto proporcionado. "
+    "Responde de forma concisa y enfocada: si la pregunta es puntual, da una respuesta directa "
+    "sin copiar toda la lista del contexto. "
+    "Si el contexto no tiene informacion relevante, di: "
+    "'No encontre informacion sobre ese tema en los documentos disponibles.' "
+    "No inventes datos. Responde en espanol."
 )
 
-RAG_PROMPT_TEMPLATE = """A continuacion se presentan fragmentos de documentos normativos de la Universidad del Norte:
+RAG_PROMPT_TEMPLATE = """Fragmentos de documentos normativos de Uninorte:
 
 {context}
 
-Pregunta: {question}
+{history}Pregunta: {question}
 
-Responde la pregunta usando la informacion de los fragmentos anteriores. Menciona de que documento proviene la informacion. Organiza tu respuesta de forma clara."""
+Responde solo lo que se pregunta usando la informacion de los fragmentos. Si la pregunta es concreta, da una respuesta directa y breve. Si no hay informacion relevante, indicalo."""
 
 
 def format_context_from_docs(docs: list) -> str:
@@ -43,6 +41,69 @@ def format_context_from_docs(docs: list) -> str:
     return "\n\n".join(context_parts)
 
 
-def build_rag_prompt(context: str, question: str) -> str:
-    """Construye el prompt completo combinando contexto y pregunta."""
-    return RAG_PROMPT_TEMPLATE.format(context=context, question=question)
+def format_history_for_prompt(history: list) -> str:
+    """
+    Convierte el historial de mensajes en texto para incluir en el prompt.
+
+    history: lista de dicts con keys 'role' ('user'|'assistant') y 'content'.
+    - Preguntas del usuario: se incluyen completas.
+    - Respuestas del asistente: se truncan a 150 chars para evitar que el modelo
+      copie respuestas largas en lugar de responder la nueva pregunta.
+    Retorna string listo para insertar antes de la Pregunta actual, o '' si vacio.
+    """
+    if not history:
+        return ""
+
+    _MAX_ASSISTANT_CHARS = 150
+
+    lines = []
+    for msg in history:
+        role = msg.get("role", "user")
+        content = msg.get("content", "").strip()
+        if not content:
+            continue
+        if role == "user":
+            lines.append(f"Pregunta previa: {content}")
+        else:
+            # Truncar para evitar que el modelo re-use la respuesta larga
+            snippet = content[:_MAX_ASSISTANT_CHARS]
+            if len(content) > _MAX_ASSISTANT_CHARS:
+                snippet += "..."
+            lines.append(f"Respuesta previa: {snippet}")
+
+    if not lines:
+        return ""
+
+    return "Contexto de la conversacion:\n" + "\n".join(lines) + "\n\n"
+
+
+def build_retrieval_query(question: str, history: list) -> str:
+    """
+    Construye una consulta de recuperacion enriquecida con contexto del historial.
+
+    Si hay turnos previos del usuario, los concatena con la pregunta actual
+    para que el retriever busque chunks relevantes para el hilo de la conversacion.
+    """
+    if not history:
+        return question
+
+    # Tomar los ultimos 2 turnos del usuario para enriquecer la busqueda
+    user_turns = [
+        m["content"].strip()
+        for m in history
+        if m.get("role") == "user" and m.get("content", "").strip()
+    ][-2:]
+
+    if user_turns:
+        return " ".join(user_turns) + " " + question
+
+    return question
+
+
+def build_rag_prompt(context: str, question: str, history: str = "") -> str:
+    """Construye el prompt completo combinando contexto, historial y pregunta."""
+    return RAG_PROMPT_TEMPLATE.format(
+        context=context,
+        question=question,
+        history=history,
+    )
