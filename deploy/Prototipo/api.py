@@ -18,6 +18,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -194,6 +195,43 @@ def query(body: QueryRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/query/stream", responses={
+    400: {"description": "Pregunta vacia."},
+    503: {"description": "Ollama no esta activo."},
+})
+def query_stream(body: QueryRequest):
+    """Consulta RAG con respuesta en streaming (Server-Sent Events)."""
+    if not body.question.strip():
+        raise HTTPException(status_code=400, detail="La pregunta no puede estar vacia.")
+    if not check_ollama_running():
+        raise HTTPException(status_code=503, detail=_OLLAMA_NO_ACTIVO)
+
+    chain = _init_chain(body.model)
+    history_dicts = [{"role": h.role, "content": h.content} for h in body.history]
+    sources_info, _, token_stream = chain.invoke_stream(body.question, history=history_dicts)
+
+    def generate():
+        try:
+            accumulated = ""
+            for chunk in token_stream:
+                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if token:
+                    accumulated += token
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+            # Si el LLM decidio por su cuenta que no habia informacion, no mostrar fuentes
+            llm_said_no_info = "no encontre informacion" in accumulated.lower()[:120]
+            final_sources = [] if llm_said_no_info else sources_info
+            yield f"data: {json.dumps({'done': True, 'sources': final_sources, 'model': body.model})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import CHROMA_DIR, RETRIEVAL_TOP_K
+from config import CHROMA_DIR, RETRIEVAL_TOP_K, RETRIEVAL_SCORE_THRESHOLD
 
 COLLECTION_NAME = "uninorte_normatividad"
 
@@ -73,9 +73,14 @@ def load_vector_store(
 def get_retriever(
     vector_store: Chroma,
     top_k: int = RETRIEVAL_TOP_K,
+    score_threshold: float = RETRIEVAL_SCORE_THRESHOLD,
 ):
-    """Obtiene un retriever de LangChain desde el vector store."""
+    """
+    Retriever con umbral de relevancia: solo devuelve chunks cuya similitud coseno
+    supere score_threshold (0-1). Si ninguno supera el umbral, devuelve lista vacia,
+    lo que permite al RAGChain responder 'no hay informacion' sin llamar al LLM.
+    """
     return vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": top_k},
+        search_type="similarity_score_threshold",
+        search_kwargs={"k": top_k, "score_threshold": score_threshold},
     )

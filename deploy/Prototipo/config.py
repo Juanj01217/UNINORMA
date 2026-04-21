@@ -35,11 +35,14 @@ SLM_MODELS = [
     "mistral:7b",
     "gemma3:1b",
 ]
-DEFAULT_SLM_MODEL = "qwen2.5:3b"
+DEFAULT_SLM_MODEL = "qwen2.5:1.5b"
 
 # === Parametros de Recuperacion ===
 RETRIEVAL_TOP_K = 6
+# Umbral minimo de similitud coseno (0-1). Chunks por debajo de este valor se descartan.
+# Si ningun chunk supera el umbral, el sistema devuelve "no hay informacion" sin llamar al LLM.
+RETRIEVAL_SCORE_THRESHOLD = 0.30
 
 # === Parametros de Generacion ===
 TEMPERATURE = 0.1
-MAX_TOKENS = 2048
+MAX_TOKENS = 600

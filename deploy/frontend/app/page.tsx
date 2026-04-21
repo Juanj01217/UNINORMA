@@ -9,7 +9,7 @@ import {
   fetchStatus,
   fetchModels,
   loadModel,
-  sendQuery,
+  sendQueryStream,
   StatusResponse,
 } from "./lib/api";
 
@@ -33,7 +33,7 @@ export default function HomePage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [models, setModels] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState("qwen2.5:3b");
+  const [selectedModel, setSelectedModel] = useState("qwen2.5:1.5b");
   const [modelLoading, setModelLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -95,22 +95,43 @@ export default function HomePage() {
     setMessages((prev) => [...prev, userMsg, loadingMsg]);
 
     try {
-      // Construir historial con los ultimos 3 exchanges completados (6 mensajes max)
       const completedMsgs = messages.filter((m) => !m.loading && m.content);
-      const historyToSend = completedMsgs.slice(-6).map((m) => ({
+      const historyToSend = completedMsgs.slice(-4).map((m) => ({
         role: m.role,
         content: m.content,
       }));
-      const result = await sendQuery(text, selectedModel, historyToSend);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === loadingMsg.id
-            ? { ...m, content: result.answer, sources: result.sources, loading: false }
-            : m
-        )
-      );
-      const s = await fetchStatus();
-      setStatus(s);
+
+      for await (const chunk of sendQueryStream(text, selectedModel, historyToSend)) {
+        if (chunk.error) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === loadingMsg.id
+                ? { ...m, content: `Error: ${chunk.error}`, loading: false }
+                : m
+            )
+          );
+          return;
+        }
+        if (chunk.token) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === loadingMsg.id
+                ? { ...m, content: (m.content ?? "") + chunk.token, loading: false }
+                : m
+            )
+          );
+        }
+        if (chunk.done) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === loadingMsg.id
+                ? { ...m, sources: chunk.sources ?? [], loading: false }
+                : m
+            )
+          );
+          fetchStatus().then(setStatus).catch(() => {});
+        }
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Error desconocido";
       setMessages((prev) =>

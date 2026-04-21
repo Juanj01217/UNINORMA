@@ -139,6 +139,44 @@ export async function getBenchmarkResults(): Promise<{ runs: BenchmarkRun[] }> {
   return res.json();
 }
 
+export async function* sendQueryStream(
+  question: string,
+  model: string,
+  history: Array<{ role: string; content: string }> = []
+): AsyncGenerator<{ token?: string; done?: boolean; sources?: Source[]; model?: string; error?: string }> {
+  const res = await fetch(`${API_URL}/query/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, model, history }),
+  });
+
+  if (!res.ok || !res.body) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Error al procesar la consulta");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          yield JSON.parse(line.slice(6));
+        } catch {
+          // ignore malformed lines
+        }
+      }
+    }
+  }
+}
+
 export async function sendQuery(
   question: string,
   model: string,

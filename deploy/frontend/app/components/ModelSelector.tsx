@@ -1,17 +1,18 @@
 "use client";
 
 interface Props {
-  models: string[];
-  selected: string;
-  onSelect: (model: string) => void;
-  loading: boolean;
+  readonly models: string[];
+  readonly selected: string;
+  readonly onSelect: (model: string) => void;
+  readonly loading: boolean;
 }
 
 export default function ModelSelector({ models, selected, onSelect, loading }: Props) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-sm text-gray-600 whitespace-nowrap">Modelo SLM:</label>
+      <label htmlFor="model-select" className="text-sm text-gray-600 whitespace-nowrap">Modelo SLM:</label>
       <select
+        id="model-select"
         value={selected}
         onChange={(e) => onSelect(e.target.value)}
         disabled={loading}

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
-
-// 5 minutos — el backend tiene su propio timeout de 90s en Ollama, por lo que
-// el proxy solo deberia disparar si el backend tarda mas de lo esperado.
 const PROXY_TIMEOUT_MS = 300_000;
 
 async function proxyRequest(req: NextRequest) {
@@ -35,11 +32,27 @@ async function proxyRequest(req: NextRequest) {
       signal: controller.signal,
     });
 
+    const contentType = res.headers.get("Content-Type") || "";
+
+    // Streaming SSE: pasar el body directamente sin bufferizar
+    if (contentType.includes("text/event-stream")) {
+      clearTimeout(timer);
+      return new NextResponse(res.body, {
+        status: res.status,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    }
+
     const data = await res.text();
     return new NextResponse(data, {
       status: res.status,
       headers: {
-        "Content-Type": res.headers.get("Content-Type") || "application/json",
+        "Content-Type": contentType || "application/json",
       },
     });
   } catch (e: unknown) {
