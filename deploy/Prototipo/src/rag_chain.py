@@ -1,4 +1,5 @@
 """Cadena RAG: combina retriever + LLM para Q&A sobre normatividad."""
+import logging
 import re
 import sys
 from pathlib import Path
@@ -7,6 +8,8 @@ from typing import Dict, Any, List, Optional
 from langchain_community.llms import Ollama
 from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
+
+_logger = logging.getLogger(__name__)
 
 
 def _dedup_answer(text: str) -> str:
@@ -41,18 +44,15 @@ _STOPWORDS_ES = {
     "tiene", "tienen", "tienes", "ser", "estar", "pasa", "sirve", "dice",
     "esta", "esto", "estos", "estas", "segun", "cada", "todo", "toda",
     "establece", "define", "menciona", "explica", "debo", "puedo",
-    # Adverbios de precision/cantidad que no aparecen en reglamentos y
-    # bajan el score coseno del retrieval query sin aportar semantica normativa.
+    # Adverbios de precision/cantidad
     "exactamente", "aproximadamente", "solamente", "unicamente", "exacto",
     "concretamente", "especificamente", "precisamente",
-    # Verbos conversacionales: no aparecen en documentos normativos y
-    # alejan el embedding del retrieval query del espacio de los reglamentos.
+    # Verbos conversacionales
     "hablame", "cuentame", "dime", "quiero", "busco", "consigo",
     "obtengo", "necesitas", "podrias",
 }
 
-# Palabras que aparecen en casi todos los chunks normativos — no sirven como
-# discriminadores porque su presencia no confirma que el chunk responde la pregunta.
+# Palabras omnipresentes en el corpus — no sirven como discriminadores.
 _OMNIPRESENT = {
     "normativa", "reglamento", "universidad", "uninorte",
     "conforme", "mediante", "disposicion", "articulo",
@@ -60,12 +60,9 @@ _OMNIPRESENT = {
 
 _ATTENDANCE_KEYWORDS = {"falto", "faltar", "faltas", "clase", "clases", "asistencia", "inasistencia", "ausencia"}
 
-# Art. 70 Reglamento Estudiantil: >25% de inasistencias = 0.0 para pregrado.
-# Art. 73: >20% para lenguas extranjeras.
-# Semestre tipico de pregrado: ~48 sesiones (3h/semana × 16 semanas).
 _ATTENDANCE_DEFAULT_SESSIONS = 48
-_ATTENDANCE_THRESHOLD_PCT = 0.25      # Art. 70 — pregrado general
-_ATTENDANCE_LANG_THRESHOLD_PCT = 0.20  # Art. 73 — lenguas extranjeras
+_ATTENDANCE_THRESHOLD_PCT = 0.25
+_ATTENDANCE_LANG_THRESHOLD_PCT = 0.20
 
 _NUMBER_WORDS_ES = {
     "una": 1, "un": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5,
@@ -109,23 +106,21 @@ def _extract_absence_count(question: str) -> Optional[int]:
 
 def _deterministic_attendance_answer(question: str) -> Optional[str]:
     """
-    Cuando la pregunta es sobre asistencia y menciona un numero especifico,
-    responde deterministicamente usando la regla del Art. 70/73, sin invocar el LLM.
-    El LLM no aplica la condicion 'excedan el 25%' correctamente con modelos pequenos.
+    Responde deterministicamente preguntas de asistencia con numero especifico.
+    Evita que el LLM malinterprete la condicion '>25%' del Art. 70/73.
     """
     if not _is_attendance_question(question):
         return None
     q_lower = question.lower()
     is_lang = _is_language_question(question)
     pct = _ATTENDANCE_LANG_THRESHOLD_PCT if is_lang else _ATTENDANCE_THRESHOLD_PCT
-    threshold_int = int(_ATTENDANCE_DEFAULT_SESSIONS * pct)  # 12 o 9
+    threshold_int = int(_ATTENDANCE_DEFAULT_SESSIONS * pct)
     article = "Art. 73" if is_lang else "Art. 70"
     pct_label = f"{int(pct * 100)}%"
 
     n = _extract_absence_count(question)
 
     if n is None:
-        # Pregunta por el umbral mismo ("cuantas faltas", "maximo de faltas")
         asking_threshold = any(
             w in q_lower
             for w in ("cuantas", "cuántas", "cuantos", "maximo", "máximo",
@@ -160,8 +155,7 @@ def _deterministic_attendance_answer(question: str) -> Optional[str]:
 def _key_terms(question: str) -> set:
     """
     Extrae terminos discriminadores de la pregunta.
-    Excluye stopwords Y palabras omnipresentes en el corpus (que aparecen en casi
-    todos los chunks y por tanto no sirven para detectar mismatches semanticos).
+    Excluye stopwords y palabras omnipresentes en el corpus.
     """
     words = re.findall(r"\b[a-záéíóúüñ]+\b", question.lower())
     return {
@@ -178,19 +172,27 @@ def _token_in_text(term: str, text: str) -> bool:
     return bool(re.search(pattern, text))
 
 
-def _context_covers(question: str, docs: list, threshold: float = 0.35) -> bool:
+def _context_covers(
+    question: str,
+    docs: list,
+    threshold: float = 0.35,
+    rewritten_query: str = "",
+) -> bool:
     """
-    Verifica que al menos el `threshold` (35%) de los terminos clave de la pregunta
-    aparezcan en los chunks recuperados.
+    Verifica que al menos el `threshold` (35%) de los terminos clave aparezcan
+    en los chunks recuperados.
 
-    Reglas:
-    - 0 terminos + pregunta corta (≤ 3 palabras): bloquear (saludos, comandos).
-    - 1 termino: debe aparecer en el contexto (threshold no aplica por division).
-    - 2+ terminos: al menos el 35% debe aparecer para considerar que el contexto
-      es relevante. Esto evita que un solo termino generico coincida por casualidad
-      y envia la pregunta al fallback cuando el retrieval es semanticamente incorrecto.
+    Evalua la UNION de terminos de la pregunta original Y del rewrite.
+    Esto resuelve el 'Lexical Gap paradox':
+    - Sin rewrite: evalua solo la pregunta original (comportamiento base).
+    - Con rewrite: la pregunta coloquial ("laptop", "descompongo") puede no tener
+      sus terminos en los chunks formales, PERO el rewrite ("sanciones", "bienes")
+      SI los tiene. La union evita rechazar chunks correctamente recuperados.
     """
     terms = _key_terms(question)
+    if rewritten_query:
+        terms = terms | _key_terms(rewritten_query)
+
     if len(terms) == 0:
         return len(question.strip().split()) > 3
     context_text = " ".join(doc.page_content.lower() for doc in docs)
@@ -205,7 +207,7 @@ _ALLOWED_ACRONYMS = {"UNINORTE", "PDF", "DNI", "NRC", "TIC", "GPS", "URL", "API"
 
 
 def _validate_no_invented_acronyms(answer: str, docs: List[Document]) -> str:
-    """Elimina del texto acronimos de 3+ mayusculas que no aparecen en los chunks fuente."""
+    """Elimina acronimos inventados que no aparecen en los chunks fuente."""
     corpus = " ".join(d.page_content for d in docs)
     found = set(_ACRONYM_RE.findall(answer)) - _ALLOWED_ACRONYMS
     invented = [a for a in found if a not in corpus]
@@ -216,11 +218,40 @@ def _validate_no_invented_acronyms(answer: str, docs: List[Document]) -> str:
     return answer
 
 
+# ---------------------------------------------------------------------------
+# Query Rewriting — validacion del output del LLM rewriter
+# ---------------------------------------------------------------------------
+_REWRITE_MAX_CHARS = 150
+
+_REWRITE_BAD_PREFIXES = (
+    "no ", "lo siento", "disculpa", "lo que pregunta",
+    "la pregunta", "respuesta:", "segun ", "según ",
+    "como asistente", "no puedo", "estimado", "hola",
+)
+
+
+def _is_bad_rewrite(rewritten: str, original: str) -> bool:
+    """
+    True si el output del LLM rewriter es invalido:
+    - Vacio o muy corto (< 4 chars)
+    - Demasiado largo (> 150 chars — modelo ignoro 'maximo 10 palabras')
+    - Empieza con prefijo de respuesta o disculpa
+    """
+    cleaned = rewritten.strip()
+    if not cleaned or len(cleaned) < 4:
+        return True
+    if len(cleaned) > _REWRITE_MAX_CHARS:
+        return True
+    low = cleaned.lower()
+    return any(low.startswith(p) for p in _REWRITE_BAD_PREFIXES)
+
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import OLLAMA_BASE_URL, DEFAULT_SLM_MODEL, TEMPERATURE, MAX_TOKENS
 from src.prompt_templates import (
     SYSTEM_PROMPT_ES,
     RAG_PROMPT_TEMPLATE,
+    QUERY_REWRITE_PROMPT,
     format_context_from_docs,
     format_history_for_prompt,
 )
@@ -231,7 +262,7 @@ def create_llm(
     temperature: float = TEMPERATURE,
     max_tokens: int = MAX_TOKENS,
 ) -> Ollama:
-    """Crea una instancia de LLM Ollama para LangChain."""
+    """LLM principal para generar la respuesta final al usuario."""
     return Ollama(
         model=model_name,
         base_url=OLLAMA_BASE_URL,
@@ -242,17 +273,42 @@ def create_llm(
     )
 
 
+def create_rewrite_llm(model_name: str = DEFAULT_SLM_MODEL) -> Ollama:
+    """
+    LLM dedicado exclusivamente a Query Rewriting.
+
+    Parametros optimizados para velocidad y salida corta:
+    - temperature=0.0  -> greedy decoding, determinista
+    - num_predict=35   -> suficiente para 10 palabras con tokens BPE en espanol
+    - repeat_penalty=1.0 -> sin penalizacion (innecesaria en salidas cortas)
+    - Sin system prompt -> el QUERY_REWRITE_PROMPT es autocontenido
+    """
+    return Ollama(
+        model=model_name,
+        base_url=OLLAMA_BASE_URL,
+        temperature=0.0,
+        num_predict=35,
+        repeat_penalty=1.0,
+    )
+
+
 class RAGChain:
     """Cadena RAG que encapsula retriever + prompt + LLM con soporte de historial."""
 
-    def __init__(self, retriever, llm, prompt: PromptTemplate):
+    def __init__(
+        self,
+        retriever,
+        llm,
+        prompt: PromptTemplate,
+        rewrite_llm: Optional[Ollama] = None,
+    ):
         self.retriever = retriever
         self.llm = llm
         self.prompt = prompt
+        self.rewrite_llm = rewrite_llm
 
     @staticmethod
     def _format_docs(docs: List[Document]) -> str:
-        """Formatea documentos recuperados en un string de contexto."""
         return format_context_from_docs(docs)
 
     @staticmethod
@@ -270,12 +326,7 @@ class RAGChain:
         return result
 
     def _keyword_search_fallback(self, terms: set, n: int = 3) -> List[Document]:
-        """
-        Busca chunks que contengan literalmente algun termino clave usando filtrado
-        por contenido (where_document), sin requerir computacion de embeddings.
-        Se usa cuando la busqueda vectorial retorna chunks que no mencionan
-        el concepto de la pregunta (mismatch semantico detectado por _context_covers).
-        """
+        """Busqueda literal por keyword en ChromaDB cuando el vector search falla."""
         try:
             collection = self.retriever.vectorstore._collection
             for term in sorted(terms, key=len, reverse=True):
@@ -297,25 +348,96 @@ class RAGChain:
             pass
         return []
 
+    def _rewrite_query_for_retrieval(
+        self,
+        question: str,
+        history: Optional[List[Dict[str, str]]],
+    ) -> str:
+        """
+        Traduce la pregunta coloquial a terminos normativos formales para ChromaDB.
+
+        Usa few-shot examples en el prompt para garantizar que el output tenga
+        embedding similar al de la pregunta formal equivalente. Esto es clave:
+        no basta con sinonimos superficiales, los terminos deben estar en el
+        mismo espacio semantico que los reglamentos indexados.
+
+        Ejemplos de transformacion (guiados por los few-shots):
+          "descompongo un laptop prestado"
+            -> "sancion disciplinaria daño deterioro bienes materiales institucion"
+
+          "me pueden echar si voy muy mal"
+            -> "cancelacion matricula bajo rendimiento academico consecuencias"
+
+        Fallback en 3 niveles si el rewrite falla:
+          1. LLM rewrite (este metodo)
+          2. _key_terms(question) — extraccion heuristica
+          3. question cruda
+        """
+        terms = _key_terms(question)
+        fallback = " ".join(terms) if terms else question
+
+        if self.rewrite_llm is None:
+            return fallback
+
+        # Enriquecer preguntas de seguimiento (cortas / con anafora) con el
+        # turno previo del usuario para que el rewrite tenga contexto suficiente.
+        context_hint = ""
+        if history:
+            user_turns = [
+                m["content"].strip()
+                for m in history
+                if m.get("role") == "user" and m.get("content", "").strip()
+            ]
+            if user_turns and len(question.split()) <= 8:
+                context_hint = f"Contexto del turno anterior: {user_turns[-1]}\n"
+
+        prompt_text = QUERY_REWRITE_PROMPT.format(
+            question=question,
+            context_hint=context_hint,
+        )
+
+        try:
+            raw = self.rewrite_llm.invoke(prompt_text)
+            rewritten = raw.content if hasattr(raw, "content") else str(raw)
+            rewritten = rewritten.strip()
+
+            # El modelo a veces envuelve la frase en una explicacion, ej:
+            #   "La respuesta es:\nFrase: 'sancion disciplinaria daño bienes'\nTipo de..."
+            # Extraemos el contenido util buscando los marcadores del few-shot.
+            low_r = rewritten.lower()
+            for marker in ("frase:", "consulta:", "busqueda:", "> "):
+                if marker in low_r:
+                    idx = low_r.rfind(marker)
+                    after = rewritten[idx + len(marker):]
+                    # Tomar solo la primera linea y limpiar comillas/espacios
+                    extracted = after.strip().strip("'\"").split("\n")[0].strip().strip("'\"").strip()
+                    if extracted and 4 <= len(extracted) <= _REWRITE_MAX_CHARS:
+                        rewritten = extracted
+                        break
+
+            # Limpieza final de comillas o espacios sobrantes
+            rewritten = rewritten.strip().strip('"').strip("'").strip()
+
+            if _is_bad_rewrite(rewritten, question):
+                _logger.debug(
+                    "Rewrite descartado — invalido: %r | fallback: %r",
+                    rewritten, fallback,
+                )
+                return fallback
+
+            _logger.debug("Rewrite OK: %r -> %r", question, rewritten)
+            return rewritten
+
+        except Exception as exc:
+            _logger.warning("Rewrite fallo (%s): fallback '%s'.", exc, fallback)
+            return fallback
+
     def invoke(
         self,
         question: str,
         history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
-        """
-        Ejecuta la cadena RAG y retorna respuesta + documentos fuente.
-
-        Args:
-            question: Pregunta actual del usuario.
-            history: Lista de dicts [{role, content}] con turnos previos
-                     (max ~6 mensajes = 3 exchanges). Puede ser None o [].
-
-        Flujo:
-            1. Enriquecer la query con contexto del historial para mejor retrieval.
-            2. Recuperar chunks relevantes.
-            3. Formatear contexto e historial en el prompt.
-            4. Invocar el LLM.
-        """
+        """Ejecuta la cadena RAG (sin streaming) y retorna respuesta + docs fuente."""
         det = _deterministic_attendance_answer(question)
         if det is not None:
             _, source_docs, _ = self._prepare(question, history)
@@ -328,38 +450,48 @@ class RAGChain:
         answer = raw_answer.content if hasattr(raw_answer, "content") else str(raw_answer)
         answer = _dedup_answer(answer)
         answer = _validate_no_invented_acronyms(answer, source_docs)
-        return {
-            "answer": answer,
-            "source_documents": source_docs,
-        }
+        return {"answer": answer, "source_documents": source_docs}
 
     def _prepare(
         self,
         question: str,
         history: Optional[List[Dict[str, str]]],
     ):
-        """Recupera docs, construye prompt y sources_info. Compartido por invoke e invoke_stream."""
+        """
+        Nucleo del pipeline RAG. Compartido por invoke e invoke_stream.
+
+        Flujo:
+          PASO 1 — Query Rewriting: traduce pregunta coloquial -> terminos normativos
+                   para cerrar el Lexical Gap antes de buscar en ChromaDB.
+          PASO 2 — Retrieval: busca chunks con la query reescrita.
+          PASO 3 — Cobertura: verifica que los chunks recuperados sean relevantes
+                   evaluando la UNION de terminos del original + rewrite.
+                   (Evita rechazar chunks buenos cuando el original es muy coloquial.)
+          PASO 4 — Fallback: si los chunks no cubren la pregunta, busca por keyword.
+          PASO 5 — Prompt: construye el texto final para el LLM principal.
+        """
         if history is None:
             history = []
 
-        # Usar solo los terminos clave como query de recuperacion mejora el score
-        # coseno para preguntas informales: "falto exactamente 8 clases" tiene baja
-        # similitud con el texto formal del reglamento, pero "falto clases materia"
-        # (terminos clave) si coincide bien con los chunks de asistencia.
-        terms = _key_terms(question)
-        retrieval_query = " ".join(terms) if terms else question
+        # PASO 1 & 2: rewrite + retrieval
+        retrieval_query = self._rewrite_query_for_retrieval(question, history)
         source_docs = self.retriever.invoke(retrieval_query)
         seen_fingerprints: set = set()
         unique_docs = self._filter_and_dedup(source_docs, seen_fingerprints)
 
+        # PASO 3 & 4: cobertura con union original+rewrite; fallback keyword si falla
+        terms = _key_terms(question)
         needs_fallback = (
-            (unique_docs and not _context_covers(question, unique_docs))
+            (unique_docs and not _context_covers(
+                question, unique_docs, rewritten_query=retrieval_query
+            ))
             or (not unique_docs and bool(terms))
         )
         if needs_fallback:
-            fallback = self._keyword_search_fallback(terms)
-            unique_docs = self._filter_and_dedup(fallback, seen_fingerprints)
+            fallback_docs = self._keyword_search_fallback(terms)
+            unique_docs = self._filter_and_dedup(fallback_docs, seen_fingerprints)
 
+        # PASO 5: construir prompt
         context = self._format_docs(unique_docs)
         history_text = format_history_for_prompt(history, current_question=question)
         attendance_note = _ATTENDANCE_RULE_NOTE if _is_attendance_question(question) else ""
@@ -390,7 +522,7 @@ class RAGChain:
         question: str,
         history: Optional[List[Dict[str, str]]] = None,
     ):
-        """Ejecuta la cadena RAG y devuelve (sources_info, source_docs, token_generator)."""
+        """Ejecuta la cadena RAG con streaming de tokens."""
         det = _deterministic_attendance_answer(question)
         if det is not None:
             _, source_docs, sources_info = self._prepare(question, history)
@@ -411,15 +543,22 @@ def create_rag_chain(
     model_name: str = DEFAULT_SLM_MODEL,
     temperature: float = TEMPERATURE,
 ) -> RAGChain:
-    """Construye la cadena RAG completa: retriever -> prompt -> LLM -> respuesta."""
+    """
+    Construye la cadena RAG completa.
+
+    - llm:         LLM principal (temperature=TEMPERATURE, 600 tokens, system prompt)
+    - rewrite_llm: LLM mini rewriter (temperature=0, 35 tokens, few-shot prompt)
+    - prompt:      Template con XML isolation de historial y fragmentos normativos
+    """
     llm = create_llm(model_name, temperature)
+    rewrite_llm = create_rewrite_llm(model_name)
 
     prompt = PromptTemplate(
         template=RAG_PROMPT_TEMPLATE,
         input_variables=["context", "question", "history", "attendance_note"],
     )
 
-    return RAGChain(retriever, llm, prompt)
+    return RAGChain(retriever, llm, prompt, rewrite_llm)
 
 
 def query_rag(
@@ -428,20 +567,8 @@ def query_rag(
     model_name: str = "",
     history: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
-    """
-    Ejecuta una consulta RAG y retorna el resultado estructurado.
-
-    Args:
-        chain: Instancia RAGChain ya configurada.
-        question: Pregunta del usuario.
-        model_name: Nombre del modelo (para incluir en el resultado).
-        history: Historial de la conversacion [{role, content}].
-
-    Returns:
-        Diccionario con: answer, source_documents, sources_info, model.
-    """
+    """Ejecuta una consulta RAG y retorna el resultado estructurado."""
     result = chain.invoke(question, history=history)
-
     source_docs = result.get("source_documents", [])
     sources_info = []
     for doc in source_docs:
@@ -451,7 +578,6 @@ def query_rag(
             "title": meta.get("title", ""),
             "page": meta.get("page", ""),
         })
-
     return {
         "answer": result.get("answer", "Sin respuesta"),
         "source_documents": source_docs,
@@ -461,14 +587,11 @@ def query_rag(
 
 
 def format_response_with_sources(result: Dict[str, Any]) -> str:
-    """Formatea la respuesta con citas de fuentes para mostrar al usuario."""
+    """Formatea la respuesta con citas de fuentes."""
     answer = result["answer"]
     sources = result.get("sources_info", [])
-
     if not sources:
         return answer
-
-    # Eliminar fuentes duplicadas
     seen = set()
     unique_sources = []
     for s in sources:
@@ -476,11 +599,9 @@ def format_response_with_sources(result: Dict[str, Any]) -> str:
         if key not in seen:
             seen.add(key)
             unique_sources.append(s)
-
     sources_text = "\n\n---\n**Fuentes consultadas:**\n"
     for s in unique_sources:
         title = s.get("title", s["source"])
         page = s.get("page", "?")
         sources_text += f"- {title} (pag. {page})\n"
-
     return answer + sources_text

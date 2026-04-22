@@ -30,6 +30,35 @@ INSTRUCCION: Responde la PREGUNTA usando SOLO la informacion de los <fragmentos_
 
 RESPUESTA:"""
 
+# ---------------------------------------------------------------------------
+# Prompt para reescritura de queries (Query Rewriting / Lexical Gap closure)
+# ---------------------------------------------------------------------------
+# Proposito: traducir la pregunta coloquial del estudiante a terminos normativos
+# antes de invocar al retriever (ChromaDB).
+#
+# DISENO: usa 3 ejemplos few-shot que demuestran el patron de traduccion
+# (coloquial → sustantivos formales que incluyen tipo de regulacion + tema).
+# Esto asegura que el modelo produzca terminos con embedding similar al de
+# la pregunta formal equivalente, no solo sinonimos superficiales.
+#
+# PARAMETROS: temperature=0.0, num_predict=35 (mini-call de baja latencia)
+# ---------------------------------------------------------------------------
+QUERY_REWRITE_PROMPT = (
+    "Eres un traductor de consultas para busqueda en reglamentos universitarios. "
+    "Convierte la pregunta coloquial en una frase de busqueda con terminos normativos formales. "
+    "Incluye el tipo de regulacion (sancion, derecho, obligacion, procedimiento) y el tema especifico. "
+    "Solo sustantivos formales. Sin verbos. Maximo 10 palabras.\n\n"
+    "Ejemplos:\n"
+    "Pregunta: 'que pasa si rompo o daño algo de la universidad'\n"
+    "Frase: 'sancion disciplinaria daño deterioro bienes materiales institucion'\n\n"
+    "Pregunta: 'me pueden echar si voy muy mal en notas'\n"
+    "Frase: 'cancelacion matricula bajo rendimiento academico consecuencias'\n\n"
+    "Pregunta: 'cuanto tiempo tengo para reclamar una nota injusta'\n"
+    "Frase: 'plazo apelacion impugnacion calificacion procedimiento academico'\n\n"
+    "{context_hint}"
+    "Pregunta: '{question}'\n"
+    "Frase:"
+)
 
 
 def format_context_from_docs(docs: list) -> str:
