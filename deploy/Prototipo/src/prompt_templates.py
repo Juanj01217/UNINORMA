@@ -12,21 +12,23 @@ SYSTEM_PROMPT_ES = (
     "Cita numeros, fechas y articulos tal como aparecen en los fragmentos; nunca calcules ni conviertas valores. "
     "Si la pregunta usa terminos distintos a los del fragmento pero el concepto es el mismo "
     "(ej. 'identificacion estudiantil' = 'carnet'), usa el fragmento para responder directamente. "
+    "REGLAS CRITICAS DE RESPUESTA:\n"
+    "1. Diferencia estrictamente entre ESTUDIANTES ACTIVOS y EGRESADOS. Si te preguntan por estudiantes, NO incluyas informacion sobre egresados, y viceversa.\n"
+    "2. Diferencia estrictamente entre DERECHOS (beneficios o facultades) y DEBERES/OBLIGACIONES (responsabilidades o normas a cumplir). No los mezcles.\n"
+    "3. No asumas que un estudiante es egresado ni que un deber es un derecho.\n"
+    "4. Si te preguntan por DERECHOS pero los fragmentos solo describen DEBERES u OBLIGACIONES, NO respondas convirtiéndolos en derechos. Di exactamente que no encontraste información.\n"
     "No uses encabezados por documento ni repitas el mismo punto aunque aparezca en varios fragmentos. "
     "Responde siempre en espanol."
 )
 
 RAG_PROMPT_TEMPLATE = """PREGUNTA: {question}
 
-<historial_conversacion>
-{history}
-</historial_conversacion>
-
 <fragmentos_normativos>
 {context}
 </fragmentos_normativos>
 {attendance_note}
-INSTRUCCION: Responde la PREGUNTA usando SOLO la informacion de los <fragmentos_normativos>. El <historial_conversacion> es solo contexto de referencia; si habla de un tema distinto, ignoralo completamente. Maximo 5 oraciones. No uses encabezados por documento.
+{rights_note}
+INSTRUCCION: Responde la PREGUNTA usando SOLO la informacion de los <fragmentos_normativos>. IGNORA por completo cualquier conocimiento previo; si la respuesta no esta explicitamente en los fragmentos, responde 'No encontre informacion sobre este tema en los documentos disponibles' y no inventes, supongas ni extrapoles absolutamente nada. Maximo 5 oraciones. Nunca uses viñetas que citen los nombres de los documentos, haz una redaccion cohesiva.
 
 RESPUESTA:"""
 
@@ -46,6 +48,8 @@ RESPUESTA:"""
 QUERY_REWRITE_PROMPT = (
     "Eres un traductor de consultas para busqueda en reglamentos universitarios. "
     "Convierte la pregunta coloquial en una frase de busqueda con terminos normativos formales. "
+    "Corrige cualquier error ortografico o de tipeo (ej. 'acitvos' -> 'activos') antes de reformular. "
+    "Manten claramente si la pregunta habla de 'estudiantes' o de 'egresados', y si habla de 'derechos' o de 'deberes'. "
     "Incluye el tipo de regulacion (sancion, derecho, obligacion, procedimiento) y el tema especifico. "
     "Solo sustantivos formales. Sin verbos. Maximo 10 palabras.\n\n"
     "Ejemplos:\n"
@@ -53,8 +57,8 @@ QUERY_REWRITE_PROMPT = (
     "Frase: 'sancion disciplinaria daño deterioro bienes materiales institucion'\n\n"
     "Pregunta: 'me pueden echar si voy muy mal en notas'\n"
     "Frase: 'cancelacion matricula bajo rendimiento academico consecuencias'\n\n"
-    "Pregunta: 'cuanto tiempo tengo para reclamar una nota injusta'\n"
-    "Frase: 'plazo apelacion impugnacion calificacion procedimiento academico'\n\n"
+    "Pregunta: 'cuales son los derechos de los estudiantes acitvos'\n"
+    "Frase: 'derechos prerrogativas facultades estudiante regular'\n\n"
     "{context_hint}"
     "Pregunta: '{question}'\n"
     "Frase:"

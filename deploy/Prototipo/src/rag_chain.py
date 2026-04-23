@@ -312,13 +312,29 @@ class RAGChain:
         return format_context_from_docs(docs)
 
     @staticmethod
-    def _filter_and_dedup(docs: List[Document], seen: set) -> List[Document]:
+    def _filter_and_dedup(docs: List[Document], seen: set, question: str = "") -> List[Document]:
         result = []
+        q_lower = question.lower()
+        is_student_query = "estudiant" in q_lower
+        is_alumni_query = "egresad" in q_lower
+
         for doc in docs:
             title = doc.metadata.get("title", "").lower()
             source = doc.metadata.get("source", "").lower()
+            
+            # Exclusion basica por palabras clave no normativas
             if any(kw in title or kw in source for kw in _NON_NORMATIVE_KW):
                 continue
+                
+            # Validacion cruzada estricta: si preguntan por estudiantes, omitir doc egresados, y viceversa
+            is_alumni_doc = "egresado" in title or "egresado" in source
+            is_student_doc = "estudiant" in title or "estudiant" in source
+            
+            if is_student_query and not is_alumni_query and is_alumni_doc:
+                continue
+            if is_alumni_query and not is_student_query and is_student_doc:
+                continue
+
             fingerprint = doc.page_content[:120].strip()
             if fingerprint not in seen:
                 seen.add(fingerprint)
@@ -477,7 +493,7 @@ class RAGChain:
         retrieval_query = self._rewrite_query_for_retrieval(question, history)
         source_docs = self.retriever.invoke(retrieval_query)
         seen_fingerprints: set = set()
-        unique_docs = self._filter_and_dedup(source_docs, seen_fingerprints)
+        unique_docs = self._filter_and_dedup(source_docs, seen_fingerprints, question)
 
         # PASO 3 & 4: cobertura con union original+rewrite; fallback keyword si falla
         terms = _key_terms(question)
@@ -489,17 +505,28 @@ class RAGChain:
         )
         if needs_fallback:
             fallback_docs = self._keyword_search_fallback(terms)
-            unique_docs = self._filter_and_dedup(fallback_docs, seen_fingerprints)
+            unique_docs = self._filter_and_dedup(fallback_docs, seen_fingerprints, question)
 
         # PASO 5: construir prompt
         context = self._format_docs(unique_docs)
         history_text = format_history_for_prompt(history, current_question=question)
         attendance_note = _ATTENDANCE_RULE_NOTE if _is_attendance_question(question) else ""
+        
+        rights_note = ""
+        q_lower = question.lower()
+        if "derecho" in q_lower and "deber" not in q_lower and "obligacion" not in q_lower:
+            rights_note = (
+                "[ADVERTENCIA CRITICA PARA EL LLM]: El usuario está preguntando EXCLUSIVAMENTE por DERECHOS. "
+                "Revisa bien los fragmentos: si un fragmento habla de 'acatar', 'cumplir', 'responder', 'asumir', "
+                "'tratar a todos...', etc., eso es un DEBER/OBLIGACIÓN. NO LO INCLUYAS EN TU RESPUESTA DE DERECHOS. "
+                "Si la información es solo sobre deberes, responde 'No encontré información sobre derechos'.\n"
+            )
+
         prompt_text = self.prompt.format(
             context=context,
             question=question,
-            history=history_text,
             attendance_note=attendance_note,
+            rights_note=rights_note,
         )
 
         seen_sources: set = set()
@@ -555,7 +582,7 @@ def create_rag_chain(
 
     prompt = PromptTemplate(
         template=RAG_PROMPT_TEMPLATE,
-        input_variables=["context", "question", "history", "attendance_note"],
+        input_variables=["context", "question", "attendance_note", "rights_note"],
     )
 
     return RAGChain(retriever, llm, prompt, rewrite_llm)
