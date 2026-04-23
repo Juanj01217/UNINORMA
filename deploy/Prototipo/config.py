@@ -49,9 +49,7 @@ SLM_MODELS = [
     "mistral:7b",
     "llama3.1:8b",
 ]
-# SLM real (3B params) — balance optimo entre calidad y latencia para RAG en
-# dominio cerrado. Antes era llama3.1:8b, que tecnicamente ya no es un SLM.
-DEFAULT_SLM_MODEL = "qwen2.5:3b"
+DEFAULT_SLM_MODEL = "qwen2.5:1.5b"
 
 # Modelo dedicado (mas pequeno) para query rewriting. Cualquier modelo de 0.5-1.5B
 # rinde bien para una tarea tan acotada y corta la doble llamada LLM a la mitad

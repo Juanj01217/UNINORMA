@@ -568,9 +568,11 @@ def create_rag_chain(
     - prompt:      Template con XML isolation de historial y fragmentos
     """
     llm = create_llm(model_name, temperature)
-    # Rewriter usa su propio modelo dedicado desde config (REWRITE_SLM_MODEL),
-    # no depende del modelo principal seleccionado.
     rewrite_llm = create_rewrite_llm()
+
+    # Precarga el reranker ahora para que el primer query no pague la descarga
+    # (~568MB BAAI/bge-reranker-v2-m3) ni el cold-start del CrossEncoder.
+    get_reranker()
 
     prompt = PromptTemplate(
         template=RAG_PROMPT_TEMPLATE,
