@@ -16,7 +16,10 @@ SYSTEM_PROMPT_ES = (
     "1. Diferencia estrictamente entre ESTUDIANTES ACTIVOS y EGRESADOS. Si te preguntan por estudiantes, NO incluyas informacion sobre egresados, y viceversa.\n"
     "2. Diferencia estrictamente entre DERECHOS (beneficios o facultades) y DEBERES/OBLIGACIONES (responsabilidades o normas a cumplir). No los mezcles.\n"
     "3. No asumas que un estudiante es egresado ni que un deber es un derecho.\n"
-    "4. Si te preguntan por DERECHOS pero los fragmentos solo describen DEBERES u OBLIGACIONES, NO respondas convirtiéndolos en derechos. Di exactamente que no encontraste información.\n"
+    "4. Si te preguntan por DERECHOS pero los fragmentos solo describen DEBERES u OBLIGACIONES, NO respondas convirtiendolos en derechos. Di exactamente que no encontraste informacion.\n"
+    "5. CITACION OBLIGATORIA: al final de cada afirmacion debes incluir una cita entre corchetes: "
+    "[Art. N] cuando el fragmento tenga numero de articulo, o [Fuente: nombre_archivo] en otros casos. "
+    "No mezcles afirmaciones de fragmentos distintos en una misma oracion sin citar ambos.\n"
     "No uses encabezados por documento ni repitas el mismo punto aunque aparezca en varios fragmentos. "
     "Responde siempre en espanol."
 )
@@ -28,22 +31,14 @@ RAG_PROMPT_TEMPLATE = """PREGUNTA: {question}
 </fragmentos_normativos>
 {attendance_note}
 {rights_note}
-INSTRUCCION: Responde la PREGUNTA usando SOLO la informacion de los <fragmentos_normativos>. IGNORA por completo cualquier conocimiento previo; si la respuesta no esta explicitamente en los fragmentos, responde 'No encontre informacion sobre este tema en los documentos disponibles' y no inventes, supongas ni extrapoles absolutamente nada. Maximo 5 oraciones. Nunca uses viñetas que citen los nombres de los documentos, haz una redaccion cohesiva.
+INSTRUCCION: Responde la PREGUNTA usando SOLO la informacion de los <fragmentos_normativos>. IGNORA por completo cualquier conocimiento previo; si la respuesta no esta explicitamente en los fragmentos, responde 'No encontre informacion sobre este tema en los documentos disponibles' y no inventes, supongas ni extrapoles absolutamente nada. Maximo 5 oraciones. Nunca uses vinetas que citen los nombres de los documentos, haz una redaccion cohesiva.
+
+CITACION OBLIGATORIA: cada oracion con informacion normativa debe terminar con una cita entre corchetes. Usa [Art. N] si el fragmento tiene numero de articulo; de lo contrario usa [Fuente: nombre_archivo]. Una oracion sin cita sera descartada.
 
 RESPUESTA:"""
 
 # ---------------------------------------------------------------------------
 # Prompt para reescritura de queries (Query Rewriting / Lexical Gap closure)
-# ---------------------------------------------------------------------------
-# Proposito: traducir la pregunta coloquial del estudiante a terminos normativos
-# antes de invocar al retriever (ChromaDB).
-#
-# DISENO: usa 3 ejemplos few-shot que demuestran el patron de traduccion
-# (coloquial → sustantivos formales que incluyen tipo de regulacion + tema).
-# Esto asegura que el modelo produzca terminos con embedding similar al de
-# la pregunta formal equivalente, no solo sinonimos superficiales.
-#
-# PARAMETROS: temperature=0.0, num_predict=35 (mini-call de baja latencia)
 # ---------------------------------------------------------------------------
 QUERY_REWRITE_PROMPT = (
     "Eres un traductor de consultas para busqueda en reglamentos universitarios. "
@@ -53,8 +48,8 @@ QUERY_REWRITE_PROMPT = (
     "Incluye el tipo de regulacion (sancion, derecho, obligacion, procedimiento) y el tema especifico. "
     "Solo sustantivos formales. Sin verbos. Maximo 10 palabras.\n\n"
     "Ejemplos:\n"
-    "Pregunta: 'que pasa si rompo o daño algo de la universidad'\n"
-    "Frase: 'sancion disciplinaria daño deterioro bienes materiales institucion'\n\n"
+    "Pregunta: 'que pasa si rompo o dano algo de la universidad'\n"
+    "Frase: 'sancion disciplinaria dano deterioro bienes materiales institucion'\n\n"
     "Pregunta: 'me pueden echar si voy muy mal en notas'\n"
     "Frase: 'cancelacion matricula bajo rendimiento academico consecuencias'\n\n"
     "Pregunta: 'cuales son los derechos de los estudiantes acitvos'\n"
@@ -66,21 +61,22 @@ QUERY_REWRITE_PROMPT = (
 
 
 def format_context_from_docs(docs: list) -> str:
-    """
-    Formatea documentos recuperados en un string de contexto con etiquetas de fuente.
-
-    Cada chunk se prefija con [Fuente: filename, Pagina: N].
-    """
+    """Formatea documentos recuperados con etiquetas de fuente y articulo."""
     context_parts = []
     for i, doc in enumerate(docs):
         metadata = doc.metadata
         source = metadata.get("source", "Desconocido")
         page = metadata.get("page", "?")
         title = metadata.get("title", "")
+        article = metadata.get("article")
 
-        header = f"[Fuente: {source} | Pagina: {page}]"
         if title:
             header = f"[Fuente: {title} ({source}) | Pagina: {page}]"
+        else:
+            header = f"[Fuente: {source} | Pagina: {page}]"
+
+        if article:
+            header = f"[Art. {article}] " + header
 
         context_parts.append(f"{header}\n{doc.page_content}")
 
@@ -99,7 +95,6 @@ def _is_no_info(content: str) -> bool:
 
 
 def _next_is_no_info(history: list, i: int) -> bool:
-    """True si el mensaje siguiente al indice i es una respuesta de 'no info'."""
     if i + 1 >= len(history):
         return False
     nxt = history[i + 1]
@@ -107,17 +102,15 @@ def _next_is_no_info(history: list, i: int) -> bool:
 
 
 def _format_user(history: list, i: int) -> tuple:
-    """Devuelve (linea_o_None, salto). salto=2 si el par debe omitirse."""
     content = history[i].get("content", "").strip()
     if not content:
         return None, 1
     if _next_is_no_info(history, i):
-        return None, 2  # omitir par (pregunta + no-info)
+        return None, 2
     return f"Pregunta previa: {content}", 1
 
 
-def _format_assistant(msg: dict) -> str | None:
-    """Devuelve la linea de historial del asistente, o None si debe omitirse."""
+def _format_assistant(msg: dict):
     content = msg.get("content", "").strip()
     if not content or _is_no_info(content):
         return None
@@ -143,7 +136,6 @@ def _simple_key_terms(text: str) -> set:
 
 
 def _topic_changed(current_question: str, history: list) -> bool:
-    """True si la pregunta actual no comparte terminos con el historial previo."""
     cur_terms = _simple_key_terms(current_question)
     if not cur_terms:
         return False
@@ -170,17 +162,10 @@ def _collect_history_lines(history: list) -> list:
 
 
 def format_history_for_prompt(history: list, current_question: str = "") -> str:
-    """
-    Convierte el historial en texto para incluir en el prompt.
-
-    Omite pares donde el asistente respondio 'No encontre informacion'.
-    Omite el historial completo si la pregunta actual cambia de tema.
-    """
     if not history:
         return ""
     if current_question and _topic_changed(current_question, history):
         return ""
-
     lines = _collect_history_lines(history)
     if not lines:
         return ""
@@ -188,9 +173,9 @@ def format_history_for_prompt(history: list, current_question: str = "") -> str:
 
 
 _FOLLOWUP_STARTERS = (
-    "para que sirve", "para qué sirve", "y que", "y qué", "y cuál", "y cual",
-    "también", "tambien", "además", "ademas", "qué más", "que mas",
-    "cómo es", "como es", "cuándo", "cuando aplica", "cuánto", "cuanto",
+    "para que sirve", "y que", "y cual",
+    "tambien", "ademas", "que mas",
+    "como es", "cuando aplica", "cuanto",
     "y si", "pero", "entonces",
 )
 
@@ -202,48 +187,31 @@ _ANAPHORA_WORDS = {
 
 
 def _is_followup(question: str) -> bool:
-    """Detecta si la pregunta es un seguimiento que necesita contexto del turno anterior."""
     q = question.strip().lower()
     words = q.split()
-    # Pregunta muy corta (≤6 palabras): probablemente hace referencia a algo anterior
     if len(words) <= 6:
         return True
-    # Empieza con un conector o frase de seguimiento
     if any(q.startswith(s) for s in _FOLLOWUP_STARTERS):
         return True
-    # Contiene pronombres anafóricos en las primeras 4 palabras
     if any(w in _ANAPHORA_WORDS for w in words[:4]):
         return True
     return False
 
 
 def build_retrieval_query(question: str, history: list) -> str:
-    """
-    Construye una consulta de recuperacion para ChromaDB.
-
-    - Si la pregunta es autonoma (>6 palabras, tema nuevo), la usa tal cual.
-    - Si es un seguimiento (corta, con pronombres o conectores), la enriquece
-      SOLO con el turno inmediatamente anterior del usuario, no con todo el historial.
-      Esto evita que temas viejos contaminen la busqueda del turno actual.
-    """
     if not history or not _is_followup(question):
         return question
-
-    # Solo el turno previo inmediato del usuario
     user_turns = [
         m["content"].strip()
         for m in history
         if m.get("role") == "user" and m.get("content", "").strip()
     ]
-
     if user_turns:
         return user_turns[-1] + " " + question
-
     return question
 
 
 def build_rag_prompt(context: str, question: str, history: str = "", attendance_note: str = "") -> str:
-    """Construye el prompt completo combinando contexto, historial y pregunta."""
     return RAG_PROMPT_TEMPLATE.format(
         context=context,
         question=question,
