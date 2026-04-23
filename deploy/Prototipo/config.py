@@ -62,11 +62,7 @@ OLLAMA_KEEP_ALIVE = "30m"
 
 # === Parametros de Recuperacion ===
 RETRIEVAL_TOP_K = 6
-# Umbral minimo de similitud coseno (0-1). Chunks por debajo de este valor se descartan.
-# Si ningun chunk supera el umbral, el sistema devuelve "no hay informacion" sin llamar al LLM.
-# Subido de 0.30 -> 0.45: evita que chunks ruidosos lleguen al prompt e induzcan
-# alucinaciones. Calibrado empiricamente con el benchmark interno.
-RETRIEVAL_SCORE_THRESHOLD = 0.45
+RETRIEVAL_SCORE_THRESHOLD = 0.4
 
 # === Parametros de Generacion ===
 TEMPERATURE = 0.1
