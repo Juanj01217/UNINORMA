@@ -1,0 +1,40 @@
+# Override para despliegue en Orange Pi 5 Pro / Plus (Rockchip RK3588).
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.orangepi.yml up -d
+#
+# Activa:
+#   - linux/arm64 explicito en todos los servicios
+#   - acceso a /dev/dri y /dev/rga del SoC para usar la NPU RK3588 (6 TOPS)
+#   - perfil "npu" para correr el responder en NPU via RKLLM en lugar de Ollama
+#   - apaga el reranker pesado y usa el embedder ONNX para minimizar RAM/latencia
+#   - monta ./deploy/models para los .rkllm pre-convertidos
+services:
+
+  ollama:
+    platform: linux/arm64
+    # En Pi, Ollama queda como fallback. Si LLM_BACKEND=rkllm, libera RAM con:
+    #   docker compose stop ollama
+
+  backend:
+    platform: linux/arm64
+    environment:
+      - LLM_BACKEND=${LLM_BACKEND:-rkllm}
+      - EMBEDDER_BACKEND=${EMBEDDER_BACKEND:-onnx}
+      - RERANKER_ENABLED=${RERANKER_ENABLED:-false}
+      - RKLLM_MODEL_PATH=${RKLLM_MODEL_PATH:-/app/models/qwen2.5-1.5b-instruct.rkllm}
+      - RKLLM_TARGET_PLATFORM=rk3588
+    volumes:
+      - ./deploy/models:/app/models:ro    # .rkllm pre-convertidos
+    devices:
+      - /dev/dri:/dev/dri                  # GPU/NPU
+    group_add:
+      - video
+      - render
+    # La NPU requiere acceso a /sys; cap_add suele bastar pero algunos kernels
+    # necesitan privileged. Probar primero sin privileged.
+    cap_add:
+      - SYS_NICE
+
+  frontend:
+    platform: linux/arm64

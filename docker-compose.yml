@@ -1,10 +1,16 @@
 services:
 
-  # --- Servidor Ollama (LLM local) ---
+  # --- Servidor Ollama (LLM local en x86 / fallback en ARM) ---
+  # En Orange Pi 5 Pro (ARM64) este servicio sigue funcionando, pero la
+  # inferencia ocurre en CPU. Para usar la NPU del RK3588 ver
+  # docker-compose.orangepi.yml (override).
   ollama:
     image: ollama/ollama:latest
     volumes:
       - ollama_models:/root/.ollama   # modelos persisten entre reinicios
+    environment:
+      - OLLAMA_KEEP_ALIVE=30m
+      - OLLAMA_NUM_PARALLEL=1         # 1 sola peticion concurrente => menos RAM en Pi
     restart: unless-stopped
 
   # --- Backend FastAPI + RAG ---
@@ -14,6 +20,16 @@ services:
       dockerfile: Prototipo/Dockerfile
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      # Backend del responder: "ollama" o "rkllm" (NPU RK3588).
+      - LLM_BACKEND=${LLM_BACKEND:-ollama}
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:1.5b}
+      # Embedder: "st" (PyTorch, default) o "onnx" (cuantizado, recomendado en ARM).
+      - EMBEDDER_BACKEND=${EMBEDDER_BACKEND:-st}
+      # Reranker: en Pi se recomienda RERANKER_ENABLED=false (ahorra ~560 MB y 1-3s).
+      - RERANKER_ENABLED=${RERANKER_ENABLED:-true}
+    volumes:
+      # ChromaDB persistente: se ingesta una sola vez y sobrevive a rebuilds.
+      - chroma_data:/app/data/chroma_db
     depends_on:
       - ollama
     restart: unless-stopped
@@ -24,7 +40,7 @@ services:
       context: ./deploy/frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: /api     # browser llama /api/* → proxy interno → backend
+        NEXT_PUBLIC_API_URL: /api     # browser llama /api/* -> proxy interno -> backend
     ports:
       - "5174:3000"                   # accesible en http://IP:5174
     environment:
@@ -34,4 +50,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  ollama_models:                      # mantiene los modelos descargados entre reinicios
+  ollama_models:                      # mantiene los modelos de Ollama entre reinicios
+  chroma_data:                        # mantiene la BD vectorial entre reinicios y rebuilds
