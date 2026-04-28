@@ -5,23 +5,32 @@ echo "======================================="
 echo "  UNINORMA Backend - Iniciando..."
 echo "======================================="
 
-# --- 1. Esperar a Ollama ---
-echo ""
-echo "[1/3] Esperando que Ollama esté listo en ${OLLAMA_BASE_URL}..."
-until curl -sf "${OLLAMA_BASE_URL}/api/tags" > /dev/null 2>&1; do
-    echo "  Ollama no disponible aún, reintentando en 3s..."
-    sleep 3
-done
-echo "[1/3] Ollama listo."
+# Si LLM_BACKEND=rkllm la inferencia corre en NPU y no necesitamos Ollama.
+LLM_BACKEND="${LLM_BACKEND:-ollama}"
+LLM_MODEL="${LLM_MODEL:-qwen2.5:1.5b}"
 
-# --- 2. Descargar modelo si no está disponible ---
-echo ""
-echo "[2/3] Verificando modelo qwen2.5:3b..."
-python3 - <<'PYEOF'
+if [ "${LLM_BACKEND}" != "ollama" ]; then
+    echo ""
+    echo "[1/3] LLM_BACKEND=${LLM_BACKEND} - se omite verificacion de Ollama."
+    echo "[2/3] Modelo Ollama no aplica en este backend."
+else
+    # --- 1. Esperar a Ollama ---
+    echo ""
+    echo "[1/3] Esperando que Ollama esté listo en ${OLLAMA_BASE_URL}..."
+    until curl -sf "${OLLAMA_BASE_URL}/api/tags" > /dev/null 2>&1; do
+        echo "  Ollama no disponible aún, reintentando en 3s..."
+        sleep 3
+    done
+    echo "[1/3] Ollama listo."
+
+    # --- 2. Descargar modelo si no está disponible ---
+    echo ""
+    echo "[2/3] Verificando modelo ${LLM_MODEL}..."
+    LLM_MODEL="${LLM_MODEL}" python3 - <<'PYEOF'
 import requests, os, json, sys
 
 base = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434")
-model = "qwen2.5:3b"
+model = os.environ.get("LLM_MODEL", "qwen2.5:1.5b")
 
 try:
     tags = requests.get(f"{base}/api/tags", timeout=10).json()
@@ -53,7 +62,8 @@ except Exception as e:
     print(f"  ERROR al verificar/descargar modelo: {e}")
     print("  Continuando de todas formas...")
 PYEOF
-echo "[2/3] Verificación de modelo completada."
+    echo "[2/3] Verificación de modelo completada."
+fi
 
 # --- 3. Verificar ChromaDB ---
 echo ""
