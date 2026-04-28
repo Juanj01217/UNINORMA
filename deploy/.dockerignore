@@ -1,0 +1,36 @@
+# Build context: ./deploy
+# Excluye lo que no se necesita en la imagen del backend.
+
+# Control de versiones
+.git/
+.gitignore
+
+# Entornos virtuales Python (no deben filtrarse a la imagen)
+Prototipo/venv/
+Prototipo/.venv/
+Prototipo/__pycache__/
+Prototipo/**/__pycache__/
+Prototipo/**/*.pyc
+Prototipo/**/*.pyo
+
+# Notebooks y artefactos de benchmark
+Prototipo/benchmark/
+Prototipo/**/*.ipynb
+Prototipo/**/.ipynb_checkpoints/
+
+# ChromaDB pre-generada NO entra en la imagen.
+# Persiste via volumen `chroma_data` (ver docker-compose.yml). De lo contrario
+# rebuilds dejan la imagen pesada y desincronizan la BD entre entornos.
+Prototipo/data/chroma_db/
+Prototipo/data/processed/
+
+# Frontend (tiene su propio Dockerfile)
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+
+# Modelos .rkllm: se montan via volumen, no se copian a la imagen
+models/
+
+# Documentacion suelta
+*.md
