@@ -2,6 +2,13 @@
 import os
 from pathlib import Path
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
 # === Rutas ===
 PROJECT_ROOT = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -29,15 +36,25 @@ EMBEDDING_MODELS = {
 }
 DEFAULT_EMBEDDING_MODEL = "minilm-multilingual"
 
+# Backend del embedder. "st" = sentence-transformers (PyTorch, default).
+# "onnx" = onnxruntime con modelo cuantizado int8. ONNX baja ~700 MB de RAM
+# y elimina la dependencia de torch en runtime; pensado para ARM/Orange Pi.
+EMBEDDER_BACKEND = os.environ.get("EMBEDDER_BACKEND", "st").lower()
+
 # === Reranker (cross-encoder) ===
 # Modelo cross-encoder multilingue que reordena los chunks recuperados.
 # Multiplica el retrieval_accuracy y permite reducir top_k post-rerank,
 # compactando el contexto que ve el SLM y bajando latencia de generacion.
-RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
-RERANKER_ENABLED = True
+RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+# RERANKER_ENABLED: en hardware limitado (Orange Pi) conviene desactivarlo
+# (anade 1-3s por consulta en CPU ARM). Se controla por env var.
+RERANKER_ENABLED = _env_bool("RERANKER_ENABLED", True)
 RERANKER_TOP_N = 3  # cuantos chunks pasan al prompt final despues del rerank
 
-# === Configuracion de Ollama ===
+# === Configuracion de Ollama / SLM responder ===
+# Backend del responder. "ollama" (default, cualquier arquitectura) o "rkllm"
+# (NPU del Rockchip RK3588 en Orange Pi 5/Pro/Plus). Ver src/llm_backend.py.
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "ollama").lower()
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 SLM_MODELS = [
     "qwen2.5:1.5b",
@@ -49,7 +66,13 @@ SLM_MODELS = [
     "mistral:7b",
     "llama3.1:8b",
 ]
-DEFAULT_SLM_MODEL = "qwen2.5:1.5b"
+DEFAULT_SLM_MODEL = os.environ.get("LLM_MODEL", "qwen2.5:1.5b")
+
+# Ruta al modelo .rkllm cuando LLM_BACKEND=rkllm. Ignorado en otros backends.
+RKLLM_MODEL_PATH = os.environ.get(
+    "RKLLM_MODEL_PATH", "/app/models/qwen2.5-1.5b-instruct.rkllm"
+)
+RKLLM_TARGET_PLATFORM = os.environ.get("RKLLM_TARGET_PLATFORM", "rk3588")
 
 # Modelo dedicado (mas pequeno) para query rewriting. Cualquier modelo de 0.5-1.5B
 # rinde bien para una tarea tan acotada y corta la doble llamada LLM a la mitad
