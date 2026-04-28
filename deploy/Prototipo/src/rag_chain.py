@@ -266,7 +266,11 @@ from config import (
     OLLAMA_KEEP_ALIVE,
     RERANKER_ENABLED,
     RERANKER_TOP_N,
+    LLM_BACKEND,
+    RKLLM_MODEL_PATH,
+    RKLLM_TARGET_PLATFORM,
 )
+from src.llm_backend import create_responder_llm
 from src.prompt_templates import (
     SYSTEM_PROMPT_ES,
     RAG_PROMPT_TEMPLATE,
@@ -280,20 +284,33 @@ def create_llm(
     model_name: str = DEFAULT_SLM_MODEL,
     temperature: float = TEMPERATURE,
     max_tokens: int = MAX_TOKENS,
-) -> Ollama:
+):
     """LLM principal para generar la respuesta final al usuario.
 
-    keep_alive mantiene el modelo cargado en memoria de Ollama tras inactividad,
-    eliminando el cold-start de 5-15s que sufre el primer query tras pausa larga.
+    Selecciona el backend segun ``config.LLM_BACKEND``:
+      - ``ollama`` (default): ``Ollama`` con keep_alive para evitar cold-start.
+      - ``rkllm``: NPU del Rockchip RK3588 (Orange Pi 5/Pro/Plus).
+
+    El callsite trata el retorno como un Runnable simple (``.invoke(prompt)``).
     """
-    return Ollama(
-        model=model_name,
-        base_url=OLLAMA_BASE_URL,
+    def _build_ollama():
+        return Ollama(
+            model=model_name,
+            base_url=OLLAMA_BASE_URL,
+            temperature=temperature,
+            num_predict=max_tokens,
+            system=SYSTEM_PROMPT_ES,
+            repeat_penalty=1.15,
+            keep_alive=OLLAMA_KEEP_ALIVE,
+        )
+
+    return create_responder_llm(
+        LLM_BACKEND,
+        ollama_factory=_build_ollama,
+        rkllm_model_path=RKLLM_MODEL_PATH,
+        rkllm_target_platform=RKLLM_TARGET_PLATFORM,
+        max_tokens=max_tokens,
         temperature=temperature,
-        num_predict=max_tokens,
-        system=SYSTEM_PROMPT_ES,
-        repeat_penalty=1.15,
-        keep_alive=OLLAMA_KEEP_ALIVE,
     )
 
 
