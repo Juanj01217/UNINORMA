@@ -16,12 +16,12 @@ echo "[1/3] Ollama listo."
 
 # --- 2. Descargar modelo si no está disponible ---
 echo ""
-echo "[2/3] Verificando modelo qwen2.5:3b..."
+echo "[2/3] Verificando modelo..."
 python3 - <<'PYEOF'
 import requests, os, json, sys
 
 base = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434")
-model = "qwen2.5:3b"
+model = "qwen2.5:1.5b"
 
 try:
     tags = requests.get(f"{base}/api/tags", timeout=10).json()
