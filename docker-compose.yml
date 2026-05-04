@@ -1,21 +1,22 @@
 services:
 
   # --- Servidor Ollama (LLM local) ---
-  ollama:
-    image: ollama/ollama:latest
-    volumes:
-      - ollama_models:/root/.ollama   # modelos persisten entre reinicios
-    restart: unless-stopped
+ # ollama:
+ #   image: ollama/ollama:latest
+ #   volumes:
+ #     - ollama_models:/root/.ollama   # modelos persisten entre reinicios
+ #   restart: unless-stopped
 
   # --- Backend FastAPI + RAG ---
   backend:
     build:
       context: ./deploy              # contexto = deploy/ (accede a Prototipo/ y WebScraping/)
       dockerfile: Prototipo/Dockerfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-    depends_on:
-      - ollama
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+
     restart: unless-stopped
 
   # --- Frontend Next.js ---
